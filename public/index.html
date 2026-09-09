@@ -788,7 +788,7 @@ function handle(frame) {
       mergeConversation(frame.conversation);
       break;
     case "stopped":
-      if (view && frame.contextLost) addNote(view, "已停止。下一条消息会重建环境，agent 不再记得之前的上下文");
+      if (view && frame.stopped) addNote(view, "已停止。本轮已取消，下一条消息会继续此对话；如果环境无法恢复，页面会提示上下文已重置");
       break;
     case "error":
       handleError(frame, view);
