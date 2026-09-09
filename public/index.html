@@ -1,0 +1,1360 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-compose chat</title>
+<style>
+  :root {
+    --bg: #fbfbfa; --panel: #fff; --side: #f4f3f1; --line: #e6e4e0; --ink: #1c1b19;
+    --muted: #78736c; --accent: #2f6f4f; --user: #eef2f7; --tool: #f6f5f3;
+    --danger: #a5352b; --sel: #e7e9e6;
+    /* Tool-kind accents, used only as small tinted badges on the activity
+       trace — muted enough to stay out of the way of the answer itself. */
+    --k-read: #3b6ea5; --k-edit: #a8752b; --k-delete: #a5352b; --k-move: #7a4fa5;
+    --k-search: #2f7ea5; --k-execute: #5a5d66; --k-think: #6a4fa5; --k-fetch: #2f8f83;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a; --panel: #1d1f23; --side: #131417; --line: #2e3238; --ink: #e9e7e4;
+      --muted: #9a958d; --accent: #6fb894; --user: #23272e; --tool: #202329;
+      --danger: #e08a80; --sel: #262b31;
+      --k-read: #7fb3e0; --k-edit: #e0b46a; --k-delete: #e08a80; --k-move: #b79ae0;
+      --k-search: #7fc7e0; --k-execute: #a7a9b3; --k-think: #b79ae0; --k-fetch: #7fd6cd;
+    }
+  }
+  * { box-sizing: border-box; }
+  /* An author display rule outweighs the UA sheet's [hidden] rule, so every
+     element this page hides by attribute needs this to actually disappear. */
+  [hidden] { display: none !important; }
+  body { margin: 0; height: 100vh; overflow: hidden; background: var(--bg); color: var(--ink);
+         font: 14px/1.6 ui-sans-serif, -apple-system, "Segoe UI", "PingFang SC", sans-serif; }
+  button, select, textarea, input {
+    font: inherit; color: inherit; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .ghost { border-color: transparent; background: transparent; padding: 4px 6px; color: var(--muted); }
+  .ghost:hover { background: var(--sel); border-color: transparent; color: var(--ink); }
+
+  /* ---------- sign in ---------- */
+  #signin { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 10; }
+  #signin form { width: 300px; display: flex; flex-direction: column; gap: 10px;
+                 padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
+  #signin h1 { margin: 0 0 6px; font-size: 16px; }
+  #signin .why { color: var(--muted); font-size: 12px; margin: 0; }
+  #signinError { color: var(--danger); font-size: 12px; min-height: 1em; }
+
+  /* ---------- layout ---------- */
+  #app { display: grid; grid-template-columns: 268px 1fr; height: 100vh; }
+
+  aside { display: flex; flex-direction: column; min-height: 0;
+          background: var(--side); border-right: 1px solid var(--line); }
+  .side-top { padding: 12px; display: flex; flex-direction: column; gap: 8px;
+              border-bottom: 1px solid var(--line); }
+  .side-top select { width: 100%; }
+  .daemon-info { color: var(--muted); font-size: 11px; line-height: 1.4; overflow: hidden; }
+  .daemon-info .label { display: block; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+  .daemon-info .address { display: block; overflow-wrap: anywhere; }
+  #new { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; }
+  #list { flex: 1; overflow-y: auto; padding: 8px; }
+  .group { color: var(--muted); font-size: 11px; padding: 10px 8px 4px; letter-spacing: .04em; }
+  .item { display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+  .item:hover { background: var(--sel); }
+  .item.on { background: var(--sel); }
+  .item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item .sub { display: block; font-size: 11px; color: var(--muted); }
+  .item .acts { display: none; gap: 2px; }
+  .item:hover .acts, .item.on .acts { display: flex; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none;
+         animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .side-bottom { border-top: 1px solid var(--line); padding: 10px 12px; display: flex;
+                 align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .side-bottom .who { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- conversation ---------- */
+  section.chat { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
+  section.chat > header { display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+                          border-bottom: 1px solid var(--line); background: var(--panel); }
+  #title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #subtitle { color: var(--muted); font-size: 12px; }
+  #status { margin-left: auto; color: var(--muted); font-size: 12px; }
+  main { flex: 1; overflow-y: auto; padding: 20px 0; }
+  .wrap { max-width: 800px; margin: 0 auto; padding: 0 16px; }
+  .empty { color: var(--muted); text-align: center; margin-top: 18vh; }
+  .row { display: flex; margin-bottom: 14px; }
+  .row.user { justify-content: flex-end; }
+  .column { max-width: 86%; min-width: 0; }
+  .bubble { max-width: 86%; padding: 10px 14px; border-radius: 12px;
+            background: var(--panel); border: 1px solid var(--line);
+            white-space: pre-wrap; word-break: break-word; }
+  .column > .bubble { max-width: 100%; }
+  .row.user .bubble { background: var(--user); }
+  .row.note .bubble { background: transparent; border: 0; color: var(--muted);
+                      font-size: 12px; margin: 0 auto; text-align: center; }
+  .cursor::after { content: "▍"; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  footer { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 0; }
+  form.composer { display: flex; gap: 8px; align-items: flex-end; }
+  form.composer textarea { flex: 1; resize: none; max-height: 180px; }
+
+  /* ---------- activity trace ----------
+     What the agent did is a footnote to what it said, so it sits under the
+     answer as one quiet line — no box, no fill, nothing that competes with
+     the reply — and only becomes a panel once the reader opens it. A turn
+     with no work to report is just that line and stops there. */
+  .activity { margin: 4px 0 0; font-size: 12px; }
+  /* baseline, not center: the summary wraps on a narrow window, and a chevron
+     centred on a two-line block floats away from the line it belongs to. */
+  .activity > summary { list-style: none; display: flex; align-items: baseline; gap: 6px;
+                        padding: 2px 8px 2px 6px; margin-left: -6px; border-radius: 999px;
+                        color: var(--muted); cursor: default; }
+  .activity > summary::-webkit-details-marker { display: none; }
+  .activity.has-trace > summary { cursor: pointer; }
+  .activity.has-trace > summary:hover { background: var(--sel); color: var(--ink); }
+  .activity .chev { flex: none; display: inline-block; font-size: 9px; opacity: .6;
+                    transition: transform .15s ease; }
+  .activity .spin { align-self: center; }
+  .activity:not(.has-trace) .chev { display: none; }
+  .activity[open] .chev { transform: rotate(90deg); }
+  /* The rule is the only thing tying a trace together, so it is drawn from the
+     ink rather than from --line: a hairline nobody can see is not restraint,
+     it is a border that does not exist. */
+  .trace { margin: 6px 0 4px 3px; padding-left: 11px; display: flex; flex-direction: column;
+           border-left: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); }
+
+  /* A step is a heading over its own entries, not another framed box: the
+     left rule above already says "this is the trace". */
+  .step > summary { list-style: none; cursor: pointer; color: var(--muted); font-size: 11px;
+                    padding: 3px 6px; margin: 3px -6px 1px; border-radius: 6px; }
+  .step > summary::-webkit-details-marker { display: none; }
+  .step > summary:hover { background: var(--sel); }
+  .entries { display: flex; flex-direction: column; }
+
+  /* One entry is one line of the trace: a tool call, a retry, a thought. The
+     shape is always [state/glyph] [title] [kind tag] [preview], so a reader
+     scans the same three spots whatever kind of entry it is. */
+  .entry { border-radius: 7px; }
+  .entry > summary { cursor: pointer; display: flex; align-items: center; gap: 7px;
+                     padding: 3px 7px; margin: 0 -7px; border-radius: 7px; font-size: 12px;
+                     list-style: none; }
+  .entry > summary::-webkit-details-marker { display: none; }
+  .entry > summary:hover { background: var(--sel); }
+  .entry .glyph { flex: none; width: 15px; text-align: center; color: var(--muted); font-size: 11px; }
+  .entry .title { color: var(--ink); }
+  .entry.tool .title { font-weight: 600; flex: none; max-width: 46%; overflow: hidden;
+                       text-overflow: ellipsis; white-space: nowrap; }
+  .entry .head { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                color: var(--muted); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; }
+  .entry pre { margin: 2px 0 6px 22px; padding: 7px 9px; background: var(--tool);
+               border: 1px solid var(--line); border-radius: 7px; white-space: pre-wrap;
+               word-break: break-word; max-height: 240px; overflow: auto;
+               font-family: ui-monospace, SFMono-Regular, monospace;
+               font-size: 11.5px; color: var(--muted); }
+  .entry.failed > summary { background: color-mix(in srgb, var(--danger) 9%, transparent); }
+  .entry.failed .title { color: var(--danger); }
+
+  /* State dot: a pending tool call spins, a finished one turns into a check
+     or a cross, so the same glyph slot tells you where a call stands without
+     reading the text next to it. */
+  .entry .state { flex: none; width: 14px; height: 14px; display: grid; place-items: center; }
+  .entry .state.pending { width: 9px; height: 9px; margin: 0 3px; border: 2px solid var(--line);
+                          border-top-color: var(--accent); border-radius: 50%;
+                          animation: spin .8s linear infinite; }
+  .entry .state.ok::before { content: "✓"; color: var(--accent); font-weight: 700; }
+  .entry .state.failed::before { content: "✕"; color: var(--danger); font-weight: 700; }
+
+  /* Kind tag: a small tinted pill naming what a tool does, colored per kind
+     so a long trace can be skimmed by shape rather than read line by line. */
+  .tag { flex: none; font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+        padding: 1px 6px; border-radius: 999px; color: var(--muted); background: var(--sel); }
+  .tag.kind-read    { color: var(--k-read);    background: color-mix(in srgb, var(--k-read) 16%, transparent); }
+  .tag.kind-edit    { color: var(--k-edit);    background: color-mix(in srgb, var(--k-edit) 16%, transparent); }
+  .tag.kind-delete  { color: var(--k-delete);  background: color-mix(in srgb, var(--k-delete) 16%, transparent); }
+  .tag.kind-move    { color: var(--k-move);    background: color-mix(in srgb, var(--k-move) 16%, transparent); }
+  .tag.kind-search  { color: var(--k-search);  background: color-mix(in srgb, var(--k-search) 16%, transparent); }
+  .tag.kind-execute { color: var(--k-execute); background: color-mix(in srgb, var(--k-execute) 16%, transparent); }
+  .tag.kind-think   { color: var(--k-think);   background: color-mix(in srgb, var(--k-think) 16%, transparent); }
+  .tag.kind-fetch   { color: var(--k-fetch);   background: color-mix(in srgb, var(--k-fetch) 16%, transparent); }
+
+  /* Plan: a real checkbox rather than a leading unicode glyph, so it reads
+     as a checklist at a glance instead of as text. */
+  .plan { margin: 4px 0 8px; padding: 2px 0 4px; list-style: none; font-size: 12.5px;
+         display: flex; flex-direction: column; gap: 5px; }
+  .plan li { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); }
+  .plan li::before { content: ""; flex: none; width: 13px; height: 13px; margin-top: 2px;
+                     border-radius: 4px; border: 1.5px solid var(--line); }
+  .plan li.done { color: var(--muted); text-decoration: line-through; opacity: .7; }
+  .plan li.done::before { content: "✓"; display: grid; place-items: center; font-size: 9px; font-weight: 700;
+                          line-height: 1; color: #fff; background: var(--accent); border-color: var(--accent); }
+
+  .spin { width: 10px; height: 10px; border: 2px solid var(--line); border-top-color: var(--accent);
+          border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="signin">
+  <form id="signinForm">
+    <h1>agent-compose chat</h1>
+    <p class="why">这个界面代你持有与 agent 的会话，所以需要知道你是谁。</p>
+    <input id="user" autocomplete="username" placeholder="用户名" required>
+    <input id="password" type="password" autocomplete="current-password" placeholder="密码" required>
+    <div id="signinError"></div>
+    <button type="submit">登录</button>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <aside>
+    <div class="side-top">
+      <select id="agent"><option value="">加载中…</option></select>
+      <div class="daemon-info" title="当前 UI Server 连接的 agent-compose daemon">
+        <span class="label">Daemon</span>
+        <span class="address" id="daemon">加载中…</span>
+      </div>
+      <button id="new">＋ 新建对话</button>
+    </div>
+    <div id="list"></div>
+    <div class="side-bottom">
+      <span class="who" id="who"></span>
+      <button class="ghost" id="recover" title="从守护进程重建列表">⟳</button>
+      <button class="ghost" id="signout">退出</button>
+    </div>
+  </aside>
+
+  <section class="chat">
+    <header>
+      <div>
+        <div id="title">未选择对话</div>
+        <div id="subtitle"></div>
+      </div>
+      <span id="status"></span>
+      <button class="ghost" id="renameBtn" title="重命名" hidden>✎</button>
+      <button class="ghost" id="archiveBtn" title="归档对话" hidden>🗄</button>
+    </header>
+    <main id="scroller"></main>
+    <footer><div class="wrap">
+      <form class="composer" id="composer">
+        <textarea id="text" rows="1" placeholder="说点什么…  (Enter 发送, Shift+Enter 换行)"></textarea>
+        <button id="send" type="submit">发送</button>
+      </form>
+    </div></footer>
+  </section>
+</div>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+const scroller = $("scroller"), listEl = $("list");
+const agentSelect = $("agent"), statusEl = $("status"), textArea = $("text"), sendBtn = $("send");
+
+let socket = null;
+let current = null;      // the open conversation record
+let conversations = [];
+
+// One view per conversation, each holding its own transcript and its own turn
+// in flight. The socket carries every conversation at once, so a turn started
+// somewhere else has to render into its own conversation rather than into
+// whatever happens to be on screen.
+const views = new Map();
+// rowSubtitles maps a conversation to its sidebar subtitle element, so a turn
+// can tick its progress there without rebuilding the list every second.
+const rowSubtitles = new Map();
+const subscribed = new Set();
+const pendingSubscriptions = new Map();
+
+const setStatus = (text) => { statusEl.textContent = text || ""; };
+const isCurrent = (id) => Boolean(current && current.id === id);
+const atBottom = () => scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
+
+// stick keeps the newest content in sight, but only for the conversation the
+// reader is actually looking at. A turn streaming into a view off screen must
+// not drag the scroller of the one on screen.
+function stick(view) {
+  if (!isCurrent(view.id)) return;
+  scroller.scrollTop = scroller.scrollHeight;
+}
+
+// ---------------------------------------------------------------- transport
+
+// api reports a lost session as a distinct signal, because everything below
+// has the same answer for it: show the sign-in form again.
+class Unauthorized extends Error {}
+
+async function api(method, path, body) {
+  const response = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (response.status === 401) throw new Unauthorized("sign in required");
+  if (!response.ok) throw new Error((await response.text()).trim() || response.statusText);
+  return response.status === 204 ? null : response.json();
+}
+
+async function guarded(work) {
+  try { return await work(); }
+  catch (error) {
+    if (error instanceof Unauthorized) { showSignIn(); return null; }
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------- sign in
+
+function showSignIn() {
+  closeSocket({ reconnect: false });
+  for (const id of [...views.keys()]) discardView(id);
+  current = null;
+  showEmpty();
+  $("app").hidden = true;
+  $("signin").hidden = false;
+  $("password").value = "";
+}
+
+async function showApp(user) {
+  $("signin").hidden = true;
+  $("app").hidden = false;
+  $("who").textContent = user;
+  connectSocket();
+  // Neither of these may keep the user on the sign-in screen: they are already
+  // signed in, and a daemon that is down is a message, not a rejection.
+  await loadAgents().catch((error) => setStatus("加载 agent 失败: " + error.message));
+  await refreshList();
+}
+
+$("signinForm").addEventListener("submit", async (submitEvent) => {
+  submitEvent.preventDefault();
+  $("signinError").textContent = "";
+  try {
+    const { user } = await api("POST", "/api/login", {
+      user: $("user").value.trim(), password: $("password").value,
+    });
+    await showApp(user);
+  } catch (error) {
+    $("signinError").textContent = error.message;
+  }
+});
+
+// Rebuilding the list asks the daemon which conversations carry this user's
+// label. It is a request, not a refresh: a run summary carries no labels, so
+// the answer costs one detail read per run and is not something to do on every
+// page load.
+$("recover").addEventListener("click", async () => {
+  setStatus("正在从守护进程重建列表…");
+  await guarded(async () => {
+    const { recovered, found } = await api("POST", "/api/conversations/recover");
+    await refreshList();
+    setStatus(recovered ? `找回 ${recovered} 个对话（共 ${found} 个）` : `没有新对话（共 ${found} 个）`);
+  });
+});
+
+$("signout").addEventListener("click", async () => {
+  await api("POST", "/api/logout").catch(() => {});
+  showSignIn();
+});
+
+// ---------------------------------------------------------------- sidebar
+
+async function loadAgents() {
+  try {
+    const { daemon, projects } = await api("GET", "/api/agents");
+    $("daemon").textContent = daemon || "未配置";
+    $("daemon").title = daemon || "未配置";
+    agentSelect.innerHTML = "";
+    for (const project of projects) {
+      const group = document.createElement("optgroup");
+      group.label = project.name ? `${project.name} · ${project.projectId}` : project.projectId;
+      for (const agent of project.agents) {
+        const option = document.createElement("option");
+        option.value = JSON.stringify({ projectId: project.projectId, agentName: agent.agentName });
+        const name = agent.displayName && agent.displayName !== agent.agentName
+          ? `${agent.displayName} (${agent.agentName})` : agent.agentName;
+        option.textContent = name + (agent.selectable ? "" : "（不可用）");
+        option.disabled = agent.selectable === false;
+        if (agent.description) option.title = agent.description;
+        group.appendChild(option);
+      }
+      if (group.children.length) agentSelect.appendChild(group);
+    }
+    const firstSelectable = [...agentSelect.options].find((option) => !option.disabled);
+    if (firstSelectable) {
+      firstSelectable.selected = true;
+    } else {
+      agentSelect.innerHTML = "<option value=''>没有可用的 agent</option>";
+    }
+  } catch (error) {
+    if (error instanceof Unauthorized) throw error;
+    agentSelect.innerHTML = "";
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "加载失败: " + error.message;
+    agentSelect.appendChild(option);
+    $("daemon").textContent = "连接失败";
+  }
+}
+
+async function refreshList() {
+  try {
+    const data = await guarded(() => api("GET", "/api/conversations"));
+    if (!data) return;
+    conversations = data.conversations;
+    drawList();
+  } catch (error) {
+    setStatus("读取对话列表失败: " + error.message);
+  }
+}
+
+// drawList groups by when a conversation was last used, which is how someone
+// looks for one they had "yesterday".
+function drawList() {
+  listEl.innerHTML = "";
+  rowSubtitles.clear();
+  const buckets = new Map([["今天", []], ["昨天", []], ["最近 7 天", []], ["更早", []]]);
+  const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+  for (const item of conversations) {
+    const used = new Date(item.updatedAt);
+    const days = Math.floor((midnight - used) / 86400000);
+    const bucket = used >= midnight ? "今天" : days < 1 ? "昨天" : days < 7 ? "最近 7 天" : "更早";
+    buckets.get(bucket).push(item);
+  }
+  for (const [label, items] of buckets) {
+    if (!items.length) continue;
+    const heading = document.createElement("div");
+    heading.className = "group";
+    heading.textContent = label;
+    listEl.appendChild(heading);
+    for (const item of items) listEl.appendChild(drawItem(item));
+  }
+  if (!conversations.length) {
+    listEl.innerHTML = "<div class='group'>还没有对话</div>";
+  }
+}
+
+function drawItem(item) {
+  const row = document.createElement("div");
+  row.className = "item" + (isCurrent(item.id) ? " on" : "");
+  row.onclick = () => openConversation(item.id);
+
+  // A conversation this page is watching knows better than the list does
+  // whether it is busy: the list is a snapshot, the socket is live.
+  const view = views.get(item.id);
+  const running = view ? Boolean(view.turn) : item.running;
+  if (running) row.appendChild(Object.assign(document.createElement("span"), { className: "dot" }));
+
+  const name = document.createElement("div");
+  name.className = "name";
+  name.textContent = item.title || "新对话";
+  const sub = document.createElement("span");
+  sub.className = "sub";
+  sub.textContent = liveSubtitle(item);
+  name.appendChild(sub);
+  row.appendChild(name);
+  // The row is kept so a running conversation can tick its own progress
+  // without redrawing the whole list out from under the reader's cursor.
+  rowSubtitles.set(item.id, sub);
+
+  const acts = document.createElement("div");
+  acts.className = "acts";
+  acts.appendChild(iconButton("✎", "重命名", (clickEvent) => { clickEvent.stopPropagation(); renameConversation(item); }));
+  acts.appendChild(iconButton("🗄", "归档", (clickEvent) => { clickEvent.stopPropagation(); archiveConversation(item); }));
+  row.appendChild(acts);
+  return row;
+}
+
+// liveSubtitle turns a sidebar row into a progress readout while its
+// conversation is working. Several conversations share one socket and run
+// independently, and until now the only sign of that was a pulsing dot: you
+// could see that something was happening, never how far along it was, and
+// never that two of them were moving at once.
+function liveSubtitle(item) {
+  const view = views.get(item.id);
+  const turn = view && view.turn;
+  if (!turn || turn.disconnected) return item.agentName;
+  const parts = [];
+  if (turn.toolCalls) parts.push(`${turn.toolCalls} 次工具调用`);
+  parts.push(`${((Date.now() - turn.startedAt) / 1000).toFixed(0)}s`);
+  return parts.join(" · ");
+}
+
+function refreshSidebarRow(id) {
+  const sub = rowSubtitles.get(id);
+  if (!sub || !sub.isConnected) return;
+  const item = conversations.find((row) => row.id === id);
+  if (item) sub.textContent = liveSubtitle(item);
+}
+
+function iconButton(glyph, title, onClick) {
+  const button = document.createElement("button");
+  button.className = "ghost";
+  button.textContent = glyph;
+  button.title = title;
+  button.onclick = onClick;
+  return button;
+}
+
+async function renameConversation(item) {
+  const title = prompt("对话标题", item.title || "");
+  if (title === null) return;
+  await guarded(async () => {
+    await api("PATCH", `/api/conversations/${item.id}`, { title });
+    await refreshList();
+    if (isCurrent(item.id)) { current.title = title; $("title").textContent = title; }
+  });
+}
+
+// Archiving stops the sandbox and removes the conversation from this list; it
+// does not delete anything. The wording says so, since a trash-can affordance
+// would promise something this action does not do.
+async function archiveConversation(item) {
+  if (!confirm(`归档“${item.title || "新对话"}”？会停止它的运行环境并从列表移除，之后可以重新打开，但 agent 不再记得之前的上下文。`)) return;
+  await guarded(async () => {
+    const result = await api("DELETE", `/api/conversations/${item.id}`);
+    if (result && result.warning) setStatus("已从列表移除，但守护进程报错: " + result.warning);
+    const wasCurrent = isCurrent(item.id);
+    discardView(item.id);
+    if (wasCurrent) clearConversation();
+    await refreshList();
+  });
+}
+
+$("new").addEventListener("click", async () => {
+  const selected = agentSelect.selectedOptions[0];
+  if (!agentSelect.value || !selected || selected.disabled) { setStatus("先选一个可用的 agent"); return; }
+  await guarded(async () => {
+    const created = await api("POST", "/api/conversations", JSON.parse(agentSelect.value));
+    conversations.unshift(created);
+    await openConversation(created.id);
+    await refreshList();
+    textArea.focus();
+  });
+});
+
+// ---------------------------------------------------------------- views
+
+function viewOf(id) {
+  let view = views.get(id);
+  if (view) return view;
+  const wrap = document.createElement("div");
+  wrap.className = "wrap";
+  view = { id, wrap, turn: null, loaded: false, sending: false, scrollTop: 0 };
+  views.set(id, view);
+  return view;
+}
+
+// discardView drops everything this page holds for a conversation: its
+// rendered transcript, its turn, and the subscription feeding it.
+function discardView(id) {
+  const view = views.get(id);
+  if (view && view.turn) endTurnState(view.turn);
+  views.delete(id);
+  unsubscribe(id);
+}
+
+function showEmpty() {
+  const empty = document.createElement("div");
+  empty.className = "empty";
+  empty.textContent = "选择左边的对话，或新建一个";
+  scroller.replaceChildren(empty);
+}
+
+function clearConversation() {
+  current = null;
+  showEmpty();
+  $("title").textContent = "未选择对话";
+  $("subtitle").textContent = "";
+  $("renameBtn").hidden = $("archiveBtn").hidden = true;
+  setStatus("");
+  refreshComposer();
+}
+
+async function openConversation(id, options = {}) {
+  await guarded(async () => {
+    if (options.reload) discardView(id);
+    const data = await api("GET", `/api/conversations/${id}`);
+    const view = viewOf(id);
+    if (!view.loaded) {
+      view.wrap.replaceChildren();
+      for (const message of data.messages || []) {
+        addRow(view, message.role === "user" ? "user" : "assistant").textContent = message.text;
+      }
+      if (data.continuity === "restarted") addNote(view, "上下文已重置——这个会话的运行环境被重建了");
+      view.loaded = true;
+      view.scrollTop = Number.MAX_SAFE_INTEGER;
+    }
+
+    const previous = current;
+    if (previous && previous.id !== id) {
+      const leaving = views.get(previous.id);
+      if (leaving) leaving.scrollTop = scroller.scrollTop;
+    }
+    current = data;
+    $("title").textContent = data.title || "新对话";
+    $("subtitle").textContent = data.agentName;
+    $("renameBtn").hidden = $("archiveBtn").hidden = false;
+    scroller.replaceChildren(view.wrap);
+    scroller.scrollTop = Math.min(view.scrollTop, scroller.scrollHeight);
+    drawList();
+    refreshComposer();
+
+    await subscribe(id);
+    // A conversation left behind with nothing running has nothing to stream,
+    // so its daemon stream is released. One still working keeps its
+    // subscription, and keeps rendering into its own view off screen.
+    if (previous && previous.id !== id) releaseIfIdle(previous.id);
+  });
+}
+
+// releaseIfIdle drops the subscription for a conversation nobody is watching
+// and nothing is happening in. The rendered transcript stays, so switching
+// back to it is still instant.
+function releaseIfIdle(id) {
+  const view = views.get(id);
+  if (!view || view.turn || view.sending || isCurrent(id)) return;
+  unsubscribe(id);
+}
+
+$("renameBtn").addEventListener("click", () => current && renameConversation(current));
+$("archiveBtn").addEventListener("click", () => current && archiveConversation(current));
+
+// ---------------------------------------------------------------- socket
+
+let reconnectDelay = 500;
+let reconnectTimer = null;
+
+function closeSocket({ reconnect } = { reconnect: true }) {
+  if (!reconnect && reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  subscribed.clear();
+  failPending(new Error("连接已关闭"));
+  if (!socket) return;
+  socket.onclose = socket.onerror = socket.onmessage = socket.onopen = null;
+  socket.close();
+  socket = null;
+}
+
+function failPending(error) {
+  for (const pending of pendingSubscriptions.values()) pending.reject(error);
+  pendingSubscriptions.clear();
+}
+
+// One authenticated socket carries subscriptions for every conversation this
+// page is watching. The daemon-facing stream remains one per conversation;
+// only the browser transport is multiplexed.
+function connectSocket() {
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+  const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+  const opening = new WebSocket(`${scheme}//${location.host}/api/socket`);
+  socket = opening;
+  let opened = false;
+
+  opening.onopen = () => {
+    opened = true;
+    reconnectDelay = 500;
+    setStatus("");
+    resubscribe();
+  };
+  opening.onerror = () => { if (!opened) setStatus("连接出错"); };
+  opening.onclose = async () => {
+    if (socket !== opening) return;
+    socket = null;
+    subscribed.clear();
+    failPending(new Error("连接已断开"));
+    for (const view of views.values()) if (view.turn) markDisconnected(view);
+    refreshComposer();
+    // A handshake that never opened is usually an expired session, and
+    // retrying it forever would hide that behind a reconnect loop.
+    if (!opened && $("app").hidden === false) {
+      const me = await fetch("/api/me").catch(() => null);
+      if (me && me.status === 401) { showSignIn(); return; }
+    }
+    setStatus("连接已断开，正在重连…");
+    scheduleReconnect();
+  };
+  opening.onmessage = (message) => handle(JSON.parse(message.data));
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer || $("app").hidden) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectSocket();
+  }, reconnectDelay);
+  reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+}
+
+// resubscribe restores the page's subscriptions after a reconnect.
+//
+// A view whose turn was cut off is rebuilt rather than resumed: the server
+// replays a turn still in flight from its beginning, and a turn that finished
+// during the outage is not replayed at all, so neither case can be stitched
+// onto a half-rendered turn.
+function resubscribe() {
+  let reloading = false;
+  for (const [id, view] of [...views]) {
+    if (!view.turn && !view.sending) continue;
+    if (isCurrent(id)) { reloading = true; openConversation(id, { reload: true }); continue; }
+    discardView(id);
+  }
+  if (!reloading && current && views.has(current.id)) {
+    subscribe(current.id).catch((error) => setStatus("订阅失败: " + error.message));
+  }
+}
+
+function socketReady() {
+  connectSocket();
+  if (!socket) return Promise.reject(new Error("无法建立连接"));
+  if (socket.readyState === WebSocket.OPEN) return Promise.resolve();
+  const opening = socket;
+  return new Promise((resolve, reject) => {
+    const settle = (fn, value) => {
+      opening.removeEventListener("open", onOpen);
+      opening.removeEventListener("close", onClose);
+      opening.removeEventListener("error", onClose);
+      fn(value);
+    };
+    // A socket that closes without opening must reject, not leave the caller
+    // waiting on an "open" that is never coming.
+    const onOpen = () => settle(resolve);
+    const onClose = () => settle(reject, new Error("连接失败"));
+    opening.addEventListener("open", onOpen);
+    opening.addEventListener("close", onClose);
+    opening.addEventListener("error", onClose);
+  });
+}
+
+async function subscribe(id) {
+  await socketReady();
+  if (subscribed.has(id)) return;
+  const waiting = pendingSubscriptions.get(id);
+  if (waiting) return waiting.promise;
+  let resolvePending, rejectPending;
+  const promise = new Promise((resolve, reject) => { resolvePending = resolve; rejectPending = reject; });
+  // Nobody awaits this promise on the failure path other than the caller, and
+  // a caller that walked away must not turn into an unhandled rejection.
+  promise.catch(() => {});
+  pendingSubscriptions.set(id, { promise, resolve: resolvePending, reject: rejectPending });
+  socket.send(JSON.stringify({ type: "subscribe", conversationId: id }));
+  return promise;
+}
+
+function unsubscribe(id) {
+  const pending = pendingSubscriptions.get(id);
+  if (pending) { pending.reject(new Error("已取消订阅")); pendingSubscriptions.delete(id); }
+  if (!subscribed.delete(id)) return;
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "unsubscribe", conversationId: id }));
+  }
+}
+
+// handle routes one frame to the conversation it names. Frames arrive for
+// every subscription on this socket, so nothing here may assume the frame
+// belongs to the conversation on screen.
+function handle(frame) {
+  const id = frame.conversationId;
+  const view = id ? views.get(id) : null;
+  switch (frame.type) {
+    case "subscribed": {
+      subscribed.add(id);
+      const pending = pendingSubscriptions.get(id);
+      if (pending) { pending.resolve(); pendingSubscriptions.delete(id); }
+      break;
+    }
+    case "unsubscribed":
+      break;
+    case "turn_started":
+      if (!view) break;
+      // A reconnect replays the turn in flight from its beginning. Drop what
+      // the dropped connection had rendered rather than laying a second copy
+      // of the same turn underneath it.
+      if (view.turn) removeTurn(view);
+      view.sending = false;
+      view.turn = startTurn(view, frame.prompt);
+      refreshComposer();
+      drawList();
+      break;
+    case "event":
+      if (view && view.turn) applyEvent(view.turn, frame.event);
+      break;
+    case "turn_done":
+      if (view) finishTurn(view, frame);
+      break;
+    case "conversation":
+      mergeConversation(frame.conversation);
+      break;
+    case "stopped":
+      if (view && frame.contextLost) addNote(view, "已停止。下一条消息会重建环境，agent 不再记得之前的上下文");
+      break;
+    case "error":
+      handleError(frame, view);
+      break;
+  }
+}
+
+function handleError(frame, view) {
+  const id = frame.conversationId;
+  const pending = id ? pendingSubscriptions.get(id) : null;
+  if (pending) {
+    pending.reject(new Error(frame.message));
+    pendingSubscriptions.delete(id);
+    subscribed.delete(id);
+    return;
+  }
+  if (!view) {
+    if (isCurrent(id) || !id) setStatus("错误: " + frame.message);
+    else setStatus(`对话 ${id}：${frame.message}`);
+    return;
+  }
+  if (view.turn) {
+    view.turn.bubble.classList.remove("cursor");
+    markActivity(view.turn, "出错");
+    endTurnState(view.turn);
+    view.turn = null;
+  }
+  view.sending = false;
+  addNote(view, "错误: " + frame.message);
+  refreshComposer();
+  drawList();
+}
+
+function mergeConversation(updated) {
+  const index = conversations.findIndex((item) => item.id === updated.id);
+  if (index >= 0) conversations[index] = updated; else conversations.unshift(updated);
+  conversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  if (isCurrent(updated.id)) {
+    current = { ...current, ...updated };
+    $("title").textContent = updated.title || "新对话";
+  }
+  drawList();
+}
+
+// ---------------------------------------------------------------- rendering
+
+function addRow(view, kind) {
+  const row = document.createElement("div");
+  row.className = "row " + kind;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  row.appendChild(bubble);
+  view.wrap.appendChild(row);
+  stick(view);
+  return bubble;
+}
+
+const addNote = (view, text) => { addRow(view, "note").textContent = text; };
+
+function refreshComposer() {
+  const view = current ? views.get(current.id) : null;
+  const stalled = Boolean(view && view.turn && view.turn.disconnected);
+  const busy = Boolean(view && view.turn) && !stalled;
+  sendBtn.textContent = busy ? "停止" : "发送";
+  sendBtn.disabled = stalled || Boolean(view && view.sending && !busy);
+}
+
+// startTurn lays out one turn: the answer, and under it the trace of what the
+// agent did to produce it. The bubble is what it said; the trace is a
+// footnote, so it goes below and stays out of the way until asked for.
+function startTurn(view, prompt) {
+  const rows = [];
+  if (prompt) {
+    const bubble = addRow(view, "user");
+    bubble.textContent = prompt;
+    rows.push(bubble.parentElement);
+  }
+
+  const row = document.createElement("div");
+  row.className = "row assistant";
+  const column = document.createElement("div");
+  column.className = "column";
+  const bubble = document.createElement("div");
+  bubble.className = "bubble cursor";
+  column.appendChild(bubble);
+  row.appendChild(column);
+  view.wrap.appendChild(row);
+  rows.push(row);
+  stick(view);
+
+  const state = {
+    view, rows, column, bubble,
+    activity: null, spinner: null, label: null, trace: null, timer: null,
+    steps: new Map(), tools: new Map(), reasoning: new Map(),
+    plan: null, text: "", toolCalls: 0, entries: 0, startedAt: Date.now(), disconnected: false,
+    // usage is kept per scope and never summed across scopes: one provider
+    // reports a step's tokens, another repeats a running total for the turn.
+    usage: new Map(),
+    pinned: false, verdict: "",
+  };
+  ensureActivity(state);
+  return state;
+}
+
+function removeTurn(view) {
+  endTurnState(view.turn);
+  for (const row of view.turn.rows) row.remove();
+  view.turn = null;
+}
+
+function endTurnState(state) {
+  if (state && state.timer) { clearInterval(state.timer); state.timer = null; }
+}
+
+// markDisconnected freezes a turn whose socket went away. The turn is kept
+// rather than dropped because the reconnect needs it to know this view has to
+// be rebuilt; it just stops pretending to be live.
+function markDisconnected(view) {
+  if (!view.turn) return;
+  view.turn.disconnected = true;
+  view.turn.bubble.classList.remove("cursor");
+  markActivity(view.turn, "连接中断");
+  endTurnState(view.turn);
+}
+
+// ensureActivity builds the one-line trace header. It exists from the start of
+// a turn because "正在工作 · 3.1s" is the only feedback a turn with no output
+// yet can give; it stays a bare line, and only grows a disclosure arrow and a
+// panel once there is something to disclose.
+function ensureActivity(state) {
+  if (state.activity) return;
+  const activity = document.createElement("details");
+  activity.className = "activity";
+  const summary = document.createElement("summary");
+  const chevron = span("chev", "▸");
+  const spinner = document.createElement("span");
+  spinner.className = "spin";
+  const label = span("label", "正在工作");
+  summary.append(chevron, spinner, label);
+  const trace = document.createElement("div");
+  trace.className = "trace";
+  activity.append(summary, trace);
+  state.column.appendChild(activity);
+
+  // Opening or closing the trace by hand pins it, so a finished turn does not
+  // fold away something the reader was in the middle of. This listens for the
+  // click rather than the toggle event, because setting `open` in code queues a
+  // toggle too and would pin every turn the moment it starts.
+  summary.addEventListener("click", (clickEvent) => {
+    if (!state.entries) { clickEvent.preventDefault(); return; }
+    state.pinned = true;
+  });
+  Object.assign(state, { activity, spinner, label, trace });
+  state.timer = setInterval(() => {
+    updateActivity(state);
+    refreshSidebarRow(state.view.id);
+  }, 1000);
+  updateActivity(state);
+}
+
+// openTrace marks the trace as having something in it, which is what turns the
+// header line into a disclosure control.
+function openTrace(state) {
+  state.entries++;
+  if (state.activity.classList.contains("has-trace")) return;
+  state.activity.classList.add("has-trace");
+  state.activity.open = true;
+}
+
+function applyEvent(state, event) {
+  switch (event.kind) {
+    case "text_delta": appendAnswer(state, event.text); break;
+    case "reasoning_delta": appendReasoning(state, event); break;
+    case "step_start": stepRecord(state, event.step); break;
+    case "step_end": endStep(state, event); break;
+    case "tool_call":
+    case "tool_result": renderTool(state, event); break;
+    case "todo": renderPlan(state, event); break;
+    case "usage": recordUsage(state, event); break;
+    case "retry":
+      addEntry(state, event.step, "↻", `重试 ${event.reason} · 第 ${event.attempt} 次` +
+        (event.maxAttempts ? ` / ${event.maxAttempts}` : ""), event.message);
+      break;
+    case "compaction":
+      addEntry(state, event.step, "🗜", event.phase === "start" ? "开始压缩上下文" : "压缩完成");
+      break;
+    case "error":
+      addEntry(state, event.step, "⚠", `${event.severity}${event.code ? " · " + event.code : ""}`,
+        event.message, true);
+      break;
+    default:
+      applyRawEvent(state, event);
+      break;
+  }
+  updateActivity(state);
+}
+
+function appendAnswer(state, text) {
+  if (!text) return;
+  // Following the answer down is only welcome while the reader is already at
+  // the bottom; someone who scrolled up to read is left where they were.
+  const following = isCurrent(state.view.id) && atBottom();
+  state.text += text;
+  state.bubble.textContent = state.text;
+  if (following) stick(state.view);
+}
+
+// Frames the runtime emits about its own lifecycle are not agent work. A run
+// announcing that it started is exactly as informative as the turn appearing
+// on screen, and showing it turns a one-line answer into a panel whose entire
+// content is the word "started".
+const lifecycleEvents = new Set(["started", "run_started", "run_completed", "agent_turn_completed"]);
+
+// RawEvent is the exact AttachAgentEvent for provider extensions the SDK does
+// not type. Presentation-specific knowledge belongs here: Codex item events
+// identify whether their extracted text is an answer or reasoning, while the
+// SDK and daemon continue to preserve the event unchanged.
+function applyRawEvent(state, event) {
+  const item = event.payload && event.payload.item;
+  if (item && item.type === "agent_message") {
+    appendAnswer(state, event.text);
+    return;
+  }
+  if (item && item.type === "reasoning") {
+    appendReasoning(state, { ...event, text: event.text || "" });
+    return;
+  }
+  const name = event.name || event.kind || "";
+  if (lifecycleEvents.has(name)) return;
+  const detail = event.text || (event.payload ? pretty(event.payload) : "");
+  // An event with a name and nothing else says nothing a reader can act on.
+  if (!detail) return;
+  addEntry(state, event.step, "·", name || "事件", detail);
+}
+
+// stepRecord returns the bookkeeping for one step without drawing anything.
+//
+// Events are grouped by their own step number rather than by what falls
+// between a step_start and a step_end: providers interleave, and the number an
+// event carries is the only thing that says where it belongs. Events from a
+// provider that does not number its steps share one unlabelled group.
+function stepRecord(state, step) {
+  const key = step === undefined ? "-" : String(step);
+  let found = state.steps.get(key);
+  if (found) return found;
+  found = { key, step, calls: 0, panel: null, summary: null, entries: null };
+  state.steps.set(key, found);
+  return found;
+}
+
+// stepGroup materializes a step's panel, which happens the first time it has
+// something to show. A step that opened and closed with no tool call and no
+// output never becomes a heading over nothing.
+function stepGroup(state, step) {
+  const found = stepRecord(state, step);
+  if (found.entries) return found;
+
+  found.entries = document.createElement("div");
+  found.entries.className = "entries";
+  if (found.key === "-") {
+    found.panel = found.entries;
+  } else {
+    found.panel = document.createElement("details");
+    found.panel.className = "step";
+    found.panel.open = true;
+    found.summary = document.createElement("summary");
+    found.panel.append(found.summary, found.entries);
+    labelStep(found);
+  }
+  openTrace(state);
+  // Keep panels in step order even if a later step's event arrives first.
+  const drawn = [...state.steps.values()].filter((item) => item.panel);
+  drawn.sort((a, b) => sortKey(a) - sortKey(b));
+  for (const item of drawn) state.trace.appendChild(item.panel);
+  return found;
+}
+
+const sortKey = (item) => (item.key === "-" ? Number.MAX_SAFE_INTEGER : Number(item.key));
+
+// Provider step numbers group events internally; they are not turn-local
+// progress indicators, so keep them out of the visible heading.
+function labelStep(found) {
+  if (!found.summary) return;
+  const parts = [];
+  if (found.calls) parts.push(`${found.calls} 次工具调用`);
+  if (found.stopReason) parts.push(found.stopReason);
+  found.summary.textContent = parts.join(" · ") || "执行详情";
+}
+
+function endStep(state, event) {
+  // Some providers emit one run-level terminator after their last step. It
+  // closes the turn, not an individual step, so it must not create a phantom
+  // unnumbered group.
+  if (event.scope === "run") return;
+  const found = stepRecord(state, event.step);
+  found.stopReason = event.stopReason || event.rawStopReason || "";
+  labelStep(found);
+  // While the turn runs, a finished step folds away so the live trace stays
+  // about as long as the work still in front of it. finishTurn opens them
+  // again: once the whole trace is behind one disclosure, expanding it should
+  // show the work, not another row of headings to click through.
+  if (found.panel && found.panel.tagName === "DETAILS") found.panel.open = false;
+}
+
+// addEntry appends one collapsible line to a step: a glyph in its own slot
+// and a title next to it, so every entry — a retry, a compaction, a thought,
+// a tool call — shares the same visual grammar instead of one run-on string.
+function addEntry(state, step, glyph, title, detail, failed) {
+  const found = stepGroup(state, step);
+  const entry = document.createElement("details");
+  entry.className = "entry" + (failed ? " failed" : "");
+  const summary = document.createElement("summary");
+  summary.appendChild(span("glyph", glyph));
+  summary.appendChild(span("title", title));
+  entry.appendChild(summary);
+  if (detail) {
+    const pre = document.createElement("pre");
+    pre.textContent = detail;
+    entry.appendChild(pre);
+  }
+  found.entries.appendChild(entry);
+  return entry;
+}
+
+function span(className, text) {
+  const el = document.createElement("span");
+  el.className = className;
+  el.textContent = text;
+  return el;
+}
+
+// Tool entries are keyed by tool call ID, so a result lands on the card its
+// call created even when several tools run at once. A card's summary is
+// always [state dot][name][kind tag][command/path preview], so a long trace
+// can be skimmed by shape — a red dot, a familiar tool name — without reading
+// every line.
+function renderTool(state, event) {
+  let card = state.tools.get(event.id);
+  if (!card) {
+    const found = stepGroup(state, event.step);
+    found.calls++;
+    labelStep(found);
+    state.toolCalls++;
+    refreshSidebarRow(state.view.id);
+
+    const entry = document.createElement("details");
+    entry.className = "entry tool";
+    const summary = document.createElement("summary");
+    const dot = span("state pending", "");
+    const name = span("title", "");
+    const kind = span("tag", "");
+    const head = span("head", "");
+    summary.append(dot, name, kind, head);
+    entry.appendChild(summary);
+    found.entries.appendChild(entry);
+    card = { entry, dot, name, kind, head };
+    state.tools.set(event.id, card);
+  }
+  if (event.kind === "tool_call") {
+    card.name.textContent = event.name;
+    card.kind.textContent = event.toolKind;
+    card.kind.className = "tag kind-" + event.toolKind;
+    card.head.textContent = event.command || describeInput(event.input) || "";
+    if (event.input) attach(card.entry, "参数", pretty(event.input));
+    if (event.changes) attach(card.entry, "改动", event.changes.map((c) => `${c.kind} ${c.path}`).join("\n"));
+  } else {
+    card.dot.className = "state " + (event.ok ? "ok" : "failed");
+    if (!event.ok) card.entry.classList.add("failed");
+    const output = event.output || event.error;
+    if (output) attach(card.entry, event.ok ? "输出" : "错误", output);
+  }
+}
+
+function attach(entry, label, text) {
+  const pre = document.createElement("pre");
+  pre.textContent = label + "\n" + text;
+  entry.appendChild(pre);
+}
+
+function pretty(value) {
+  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
+}
+
+// describeInput picks the one field of a tool's arguments worth showing on the
+// collapsed line, so a summary reads like what the tool is about to do.
+function describeInput(input) {
+  if (!input || typeof input !== "object") return "";
+  for (const key of ["command", "path", "file_path", "pattern", "query", "url"]) {
+    if (typeof input[key] === "string") return input[key].slice(0, 120);
+  }
+  return "";
+}
+
+function appendReasoning(state, event) {
+  if (!event.text) return;
+  const key = event.step === undefined ? "-" : String(event.step);
+  let block = state.reasoning.get(key);
+  if (!block) {
+    const entry = addEntry(state, event.step, "💭", "思考", "");
+    const pre = document.createElement("pre");
+    entry.appendChild(pre);
+    block = { pre, text: "" };
+    state.reasoning.set(key, block);
+  }
+  block.text += event.text;
+  block.pre.textContent = block.text;
+}
+
+// renderPlan keeps one checklist, replaced whenever the agent revises it.
+function renderPlan(state, event) {
+  if (!state.plan) {
+    state.plan = document.createElement("ul");
+    state.plan.className = "plan";
+    state.trace.prepend(state.plan);
+    openTrace(state);
+  }
+  state.plan.innerHTML = "";
+  for (const item of event.items || []) {
+    const entry = document.createElement("li");
+    entry.className = item.completed ? "done" : "";
+    entry.textContent = item.text;
+    state.plan.appendChild(entry);
+  }
+}
+
+function recordUsage(state, event) {
+  const found = state.usage.get(event.scope) || { input: 0, output: 0, cost: 0, count: 0 };
+  if (event.scope === "step") {
+    // Step records cover disjoint work, so they add up.
+    found.input += event.inputTokens; found.output += event.outputTokens;
+    found.cost += event.costUsd || 0;
+  } else {
+    // Turn and run records are running totals; the newest one replaces the
+    // last rather than being added to it.
+    found.input = event.inputTokens; found.output = event.outputTokens;
+    found.cost = event.costUsd || 0;
+  }
+  found.count++;
+  found.model = event.model || found.model;
+  state.usage.set(event.scope, found);
+}
+
+// compact keeps a token count to a glance rather than a figure to read.
+const compact = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "k" : String(n));
+
+function usageLine(state) {
+  // Prefer the coarsest scope the provider reported; scopes are never mixed.
+  for (const scope of ["turn", "run", "step"]) {
+    const found = state.usage.get(scope);
+    if (!found) continue;
+    const cost = found.cost ? ` · $${found.cost.toFixed(4)}` : "";
+    return `${compact(found.input)} in / ${compact(found.output)} out${cost}`;
+  }
+  return "";
+}
+
+function updateActivity(state) {
+  if (!state.activity) return;
+  const seconds = ((Date.now() - state.startedAt) / 1000).toFixed(1);
+  const parts = [state.verdict || "正在工作"];
+  // Count every step the turn reported, not just the ones with something to
+  // show. Counting drawn panels instead made the header disagree with the
+  // labels inside it: a turn whose last step is pure prose draws no panel for
+  // it, so "2 步" would sit above 步骤 3 and 步骤 4.
+  const numbered = [...state.steps.values()].filter((item) => item.key !== "-").length;
+  if (numbered > 1) parts.push(`${numbered} 步`);
+  if (state.toolCalls) parts.push(`${state.toolCalls} 次工具调用`);
+  parts.push(`${seconds}s`);
+  const usage = usageLine(state);
+  if (usage) parts.push(usage);
+  state.label.textContent = parts.join(" · ");
+}
+
+function markActivity(state, verdict) {
+  state.verdict = verdict;
+  if (state.spinner) { state.spinner.remove(); state.spinner = null; }
+  updateActivity(state);
+}
+
+// Some providers put the user-facing answer in the structured result while
+// leaving the legacy top-level text field empty. Prefer the streamed text, but
+// keep the structured finalText as the compatibility fallback so a completed
+// turn is never rendered as a blank bubble.
+function finalTextOf(frame) {
+  if (typeof frame.text === "string" && frame.text) return frame.text;
+  if (frame.result && typeof frame.result.finalText === "string") return frame.result.finalText;
+  return typeof frame.text === "string" ? frame.text : "";
+}
+
+function finishTurn(view, frame) {
+  const state = view.turn;
+  if (state) {
+    state.bubble.classList.remove("cursor");
+    if (!state.text) state.bubble.textContent = finalTextOf(frame);
+    markActivity(state, "已完成");
+    for (const step of state.steps.values()) {
+      if (step.panel && step.panel.tagName === "DETAILS") step.panel.open = true;
+    }
+    // A finished trace folds away unless the reader opened it themselves; the
+    // answer is what they came for, the trace is there when they want it.
+    if (!state.pinned) state.activity.open = false;
+    endTurnState(state);
+  }
+  // A turn that lost its environment must say so: the agent no longer has the
+  // context the earlier turns built up.
+  if (frame.continuity === "restarted") {
+    addNote(view, "上下文已重置——这个会话的运行环境被重建了");
+  }
+  view.turn = null;
+  view.sending = false;
+  refreshComposer();
+  // Nothing is streaming here any more, so a conversation the reader has
+  // already moved on from gives its daemon stream back.
+  releaseIfIdle(view.id);
+  refreshList();
+}
+
+// ---------------------------------------------------------------- composer
+
+$("composer").addEventListener("submit", async (submitEvent) => {
+  submitEvent.preventDefault();
+  if (!current) { setStatus("先新建或选择一个对话"); return; }
+  const view = views.get(current.id);
+  if (view && view.turn) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "stop", conversationId: current.id }));
+    }
+    return;
+  }
+  const text = textArea.value.trim();
+  if (!text) return;
+  textArea.value = "";
+  textArea.style.height = "auto";
+  // The turn only exists once the daemon has taken the message, so the
+  // composer is held until then rather than inviting a second send that the
+  // server would reject as busy.
+  view.sending = true;
+  refreshComposer();
+  try {
+    await socketReady();
+    socket.send(JSON.stringify({ type: "message", conversationId: current.id, text }));
+  } catch (error) {
+    view.sending = false;
+    refreshComposer();
+    addNote(view, "发送失败: " + error.message);
+  }
+});
+
+textArea.addEventListener("input", () => {
+  textArea.style.height = "auto";
+  textArea.style.height = Math.min(textArea.scrollHeight, 180) + "px";
+});
+textArea.addEventListener("keydown", (keyEvent) => {
+  if (keyEvent.key === "Enter" && !keyEvent.shiftKey) {
+    keyEvent.preventDefault();
+    $("composer").requestSubmit();
+  }
+});
+
+// ---------------------------------------------------------------- start
+
+(async () => {
+  clearConversation();
+  const { user } = await api("GET", "/api/me").catch(() => ({ user: null }));
+  if (user) await showApp(user); else showSignIn();
+})();
+</script>
+</body>
+</html>
