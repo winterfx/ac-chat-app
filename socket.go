@@ -212,7 +212,7 @@ func (c *socketConnection) handle(frame clientFrame) {
 			c.sendError(id, err)
 			return
 		}
-		c.send(id, map[string]any{"type": "stopped", "stopped": stopped, "contextLost": stopped})
+		c.send(id, map[string]any{"type": "stopped", "stopped": stopped})
 	}
 }
 

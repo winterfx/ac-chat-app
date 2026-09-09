@@ -513,7 +513,7 @@ async function renameConversation(item) {
 // does not delete anything. The wording says so, since a trash-can affordance
 // would promise something this action does not do.
 async function archiveConversation(item) {
-  if (!confirm(`归档“${item.title || "新对话"}”？会停止它的运行环境并从列表移除，之后可以重新打开，但 agent 不再记得之前的上下文。`)) return;
+  if (!confirm(`归档“${item.title || "新对话"}”？会停止当前运行并从列表移除，历史记录会保留，之后重新打开时会尝试恢复上下文。`)) return;
   await guarded(async () => {
     const result = await api("DELETE", `/api/conversations/${item.id}`);
     if (result && result.warning) setStatus("已从列表移除，但守护进程报错: " + result.warning);
