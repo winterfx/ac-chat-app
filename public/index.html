@@ -54,7 +54,36 @@
           background: var(--side); border-right: 1px solid var(--line); }
   .side-top { padding: 12px; display: flex; flex-direction: column; gap: 8px;
               border-bottom: 1px solid var(--line); }
-  .side-top select { width: 100%; }
+  .side-top { padding: 16px 12px; gap: 12px; }
+  .picker-label { display: block; color: var(--muted); font-size: 11px; font-weight: 600; margin-bottom: 5px; }
+  .project-control { position: relative; }
+  .project-control::after { content: "⌄"; position: absolute; right: 12px; top: 8px; pointer-events: none; color: var(--muted); }
+  .side-top select { width: 100%; appearance: none; padding: 9px 30px 9px 12px; font-weight: 500; text-overflow: ellipsis; }
+  button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .agent-picker { position: relative; }
+  .agent-picker > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  .agent-picker > summary::-webkit-details-marker { display: none; }
+  .agent-picker[open] > summary { border-color: var(--accent); }
+  .agent-avatar { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 9px;
+    color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); font-weight: 600; }
+  .agent-selection { min-width: 0; flex: 1; }
+  #agentName { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  #agentHint { display: block; color: var(--muted); font-size: 11px; }
+  .picker-chevron { color: var(--muted); }
+  .agent-options { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 5;
+    max-height: min(360px, 45vh); overflow-y: auto; padding: 5px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px #0002; }
+  .agent-option { width: 100%; text-align: left; background: transparent; border-color: transparent; padding: 9px; }
+  .agent-option + .agent-option { margin-top: 3px; }
+  .agent-option[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
+  .agent-option-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
+  .agent-option-state { color: var(--accent); flex: none; font-size: 11px; }
+  .agent-option:disabled .agent-option-state { color: var(--muted); }
+  .agent-option-description { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
+  .picker-message { padding: 9px; margin: 0; font-size: 12px; color: var(--muted); }
+  #catalogError { margin: 0; font-size: 11px; color: var(--danger); overflow-wrap: anywhere; }
+  .side-top #new { padding: 9px 12px; border-radius: 10px; }
   .daemon-info { color: var(--muted); font-size: 11px; line-height: 1.4; overflow: hidden; }
   .daemon-info .label { display: block; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
   .daemon-info .address { display: block; overflow-wrap: anywhere; }
@@ -212,12 +241,27 @@
 <div id="app" hidden>
   <aside>
     <div class="side-top">
-      <select id="agent"><option value="">加载中…</option></select>
+      <div>
+        <label class="picker-label" for="project">Project</label>
+        <div class="project-control"><select id="project" disabled><option value="">加载中…</option></select></div>
+      </div>
+      <div>
+        <span class="picker-label" id="agentLabel">Agent</span>
+        <details id="agentPicker" class="agent-picker">
+          <summary aria-labelledby="agentLabel agentName">
+            <span class="agent-avatar" id="agentAvatar" aria-hidden="true">A</span>
+            <span class="agent-selection"><span id="agentName">加载中…</span><span id="agentHint">请选择项目</span></span>
+            <span class="picker-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div class="agent-options" id="agentOptions"></div>
+        </details>
+      </div>
+      <p id="catalogError" hidden></p>
+      <button id="new" disabled>＋ 新建对话</button>
       <div class="daemon-info" title="当前 UI Server 连接的 agent-compose daemon">
         <span class="label">Daemon</span>
         <span class="address" id="daemon">加载中…</span>
       </div>
-      <button id="new">＋ 新建对话</button>
     </div>
     <div id="list"></div>
     <div class="side-bottom">
@@ -252,7 +296,7 @@
 
 const $ = (id) => document.getElementById(id);
 const scroller = $("scroller"), listEl = $("list");
-const agentSelect = $("agent"), statusEl = $("status"), textArea = $("text"), sendBtn = $("send");
+const projectSelect = $("project"), statusEl = $("status"), textArea = $("text"), sendBtn = $("send");
 
 let socket = null;
 let current = null;      // the open conversation record
@@ -362,40 +406,103 @@ $("signout").addEventListener("click", async () => {
 
 // ---------------------------------------------------------------- sidebar
 
+let agentProjects = [];
+let selectedAgent = null;
+
+function renderAgentChoices() {
+  const project = agentProjects.find((item) => item.projectId === projectSelect.value);
+  const agents = project?.agents || [];
+  projectSelect.title = project?.projectId || "";
+  selectedAgent = agents.find((item) => item.selectable !== false) || null;
+  $("agentPicker").open = false;
+  const options = $("agentOptions");
+  options.replaceChildren();
+  for (const agent of agents) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "agent-option";
+    button.disabled = agent.selectable === false;
+    const title = document.createElement("span");
+    title.className = "agent-option-title";
+    const name = document.createElement("span");
+    name.textContent = agent.displayName || agent.agentName;
+    const state = document.createElement("span");
+    state.className = "agent-option-state";
+    title.append(name, state);
+    const description = document.createElement("span");
+    description.className = "agent-option-description";
+    description.textContent = button.disabled ? (agent.availability || "当前不可用") : (agent.description || agent.agentName);
+    button.append(title, description);
+    button.addEventListener("click", () => {
+      selectedAgent = agent;
+      updateAgentSelection();
+      $("agentPicker").open = false;
+      $("agentPicker").querySelector("summary").focus();
+    });
+    options.appendChild(button);
+  }
+  if (!agents.length) {
+    const empty = document.createElement("p");
+    empty.className = "picker-message";
+    empty.textContent = "此项目暂无 Agent";
+    options.appendChild(empty);
+  }
+  updateAgentSelection();
+}
+
+function updateAgentSelection() {
+  const project = agentProjects.find((item) => item.projectId === projectSelect.value);
+  $("agentName").textContent = selectedAgent?.displayName || selectedAgent?.agentName || "没有可用的 Agent";
+  $("agentAvatar").textContent = (selectedAgent?.displayName || selectedAgent?.agentName || "A").slice(0, 1).toUpperCase();
+  $("agentHint").textContent = selectedAgent ? "点击切换 Agent" : "可展开查看详情";
+  $("new").disabled = !selectedAgent;
+  for (const [index, button] of [...$("agentOptions").querySelectorAll("button")].entries()) {
+    const chosen = project && project.agents[index] === selectedAgent;
+    button.setAttribute("aria-pressed", String(chosen));
+    button.querySelector(".agent-option-state").textContent = button.disabled ? "不可用" : chosen ? "✓" : "";
+  }
+}
+
+projectSelect.addEventListener("change", renderAgentChoices);
+document.addEventListener("click", (event) => {
+  if (!$("agentPicker").contains(event.target)) $("agentPicker").open = false;
+});
+$("agentPicker").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    $("agentPicker").open = false;
+    $("agentPicker").querySelector("summary").focus();
+  }
+});
+
 async function loadAgents() {
+  $("new").disabled = true;
+  selectedAgent = null;
+  $("catalogError").hidden = true;
   try {
     const { daemon, projects } = await api("GET", "/api/agents");
     $("daemon").textContent = daemon || "未配置";
     $("daemon").title = daemon || "未配置";
-    agentSelect.innerHTML = "";
-    for (const project of projects) {
-      const group = document.createElement("optgroup");
-      group.label = project.name ? `${project.name} · ${project.projectId}` : project.projectId;
-      for (const agent of project.agents) {
-        const option = document.createElement("option");
-        option.value = JSON.stringify({ projectId: project.projectId, agentName: agent.agentName });
-        const name = agent.displayName && agent.displayName !== agent.agentName
-          ? `${agent.displayName} (${agent.agentName})` : agent.agentName;
-        option.textContent = name + (agent.selectable ? "" : "（不可用）");
-        option.disabled = agent.selectable === false;
-        if (agent.description) option.title = agent.description;
-        group.appendChild(option);
-      }
-      if (group.children.length) agentSelect.appendChild(group);
+    agentProjects = projects || [];
+    projectSelect.replaceChildren();
+    for (const project of agentProjects) {
+      const option = document.createElement("option");
+      option.value = project.projectId;
+      option.textContent = project.name || project.projectId;
+      projectSelect.appendChild(option);
     }
-    const firstSelectable = [...agentSelect.options].find((option) => !option.disabled);
-    if (firstSelectable) {
-      firstSelectable.selected = true;
-    } else {
-      agentSelect.innerHTML = "<option value=''>没有可用的 agent</option>";
-    }
+    projectSelect.disabled = !agentProjects.length;
+    if (!agentProjects.length) projectSelect.add(new Option("暂无项目", ""));
+    const available = agentProjects.find((project) => (project.agents || []).some((agent) => agent.selectable !== false));
+    if (available) projectSelect.value = available.projectId;
+    renderAgentChoices();
   } catch (error) {
     if (error instanceof Unauthorized) throw error;
-    agentSelect.innerHTML = "";
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "加载失败: " + error.message;
-    agentSelect.appendChild(option);
+    agentProjects = [];
+    projectSelect.replaceChildren(new Option("项目加载失败", ""));
+    projectSelect.disabled = true;
+    renderAgentChoices();
+    $("catalogError").textContent = error.message;
+    $("catalogError").hidden = false;
     $("daemon").textContent = "连接失败";
   }
 }
@@ -525,10 +632,10 @@ async function archiveConversation(item) {
 }
 
 $("new").addEventListener("click", async () => {
-  const selected = agentSelect.selectedOptions[0];
-  if (!agentSelect.value || !selected || selected.disabled) { setStatus("先选一个可用的 agent"); return; }
+  if (!selectedAgent || selectedAgent.selectable === false) { setStatus("先选一个可用的 Agent"); return; }
+  const choice = { projectId: projectSelect.value, agentName: selectedAgent.agentName };
   await guarded(async () => {
-    const created = await api("POST", "/api/conversations", JSON.parse(agentSelect.value));
+    const created = await api("POST", "/api/conversations", choice);
     conversations.unshift(created);
     await openConversation(created.id);
     await refreshList();
