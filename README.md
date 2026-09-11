@@ -1,44 +1,76 @@
-# chatui
+# ac-chat-app
 
 A browser chat UI for agent-compose agents, built on the
-[Go chat SDK](../sdk/go).
+[Go chat SDK](https://github.com/chaitin/agent-compose/tree/main/sdk/go)
+(`github.com/chaitin/agent-compose/sdk/go/chat`).
+
+## Requirements
+
+- Go 1.25 or newer.
+- An agent-compose daemon with its HTTP listener enabled. The daemon serves
+  HTTP only when `HTTP_LISTEN` is set (for example
+  `HTTP_LISTEN=127.0.0.1:7411`); this app talks to it over Connect, which needs
+  HTTP/2 end to end, so an HTTP/1-only proxy in between breaks conversations.
+
+## Running
 
 ```bash
-go run . -daemon http://127.0.0.1:7410
+git clone git@github.com:winterfx/ac-chat-app.git && cd ac-chat-app
+go run . -daemon http://127.0.0.1:7411
 # http://127.0.0.1:7500
 ```
 
+or install the binary:
+
+```bash
+go install github.com/winterfx/ac-chat-app@latest
+ac-chat-app -daemon http://127.0.0.1:7411
+```
+
 With no accounts yet, the first start creates `admin` and prints a generated
-password once. `AGENT_COMPOSE_AUTH_TOKEN` is sent to the daemon as a bearer
-token when set.
+password once.
 
 ```bash
 go run . -add-user alice        # prompts for a password, no echo
 go run . -set-password alice
 ```
 
-| flag | default | |
-|---|---|---|
-| `-listen` | `127.0.0.1:7500` | where to serve the UI |
-| `-daemon` | `http://127.0.0.1:7411` | the agent-compose daemon's HTTP address |
-| `-state` | `~/.ac-chat-app/state.json` | accounts and the chat list |
-| `-allow-origin` | | extra origins allowed to open a chat socket |
-| `-idle-after` | `15m` | end a conversation's run once nobody has watched it for this long |
-| `-sweep-every` | `1m` | how often to look for conversations that have gone idle |
+## Configuration
+
+Each setting resolves from its flag, then the environment, then a `.env` file in
+the working directory, then the default.
+
+| flag | env | default | |
+|---|---|---|---|
+| `-listen` | `AC_LISTEN` | `127.0.0.1:7500` | where to serve the UI |
+| `-daemon` | `AC_DAEMON` | `http://127.0.0.1:7411` | the agent-compose daemon's HTTP address |
+| `-state` | `AC_STATE` | `~/.ac-chat-app/state.json` | accounts and the chat list |
+| `-allow-origin` | `AC_ALLOW_ORIGIN` | | extra origins allowed to open a chat socket, comma separated |
+| `-idle-after` | | `15m` | end a conversation's run once nobody has watched it for this long |
+| `-sweep-every` | | `1m` | how often to look for conversations that have gone idle |
 
 `-idle-after` is the knob for how many environments this server keeps warm: a
 shorter window frees sandboxes sooner and makes the next message pay for a
 restart, a longer one keeps a conversation instant to return to.
 
-For local development, copy `.env.example` to `.env` and set the daemon
-address. The app reads `AGENT_COMPOSE_AUTH_TOKEN` when the daemon's HTTP(S)
-control plane requires a bearer token; an empty value means token
-authentication is disabled on the daemon.
+`AGENT_COMPOSE_AUTH_TOKEN` — the daemon's own variable, so one `.env` can
+configure both sides — is sent to the daemon as a bearer token when its control
+plane requires one; `AC_DAEMON_TOKEN` is accepted as an alternative. Leave both
+empty when the daemon runs with token authentication disabled.
+
+For local development, copy `.env.example` to `.env`:
 
 ```env
-AC_DAEMON=http://127.0.0.1:7410
+AC_DAEMON=http://127.0.0.1:7411
 AC_LISTEN=127.0.0.1:7500
 AGENT_COMPOSE_AUTH_TOKEN=your-token
+```
+
+The SDK has no tagged release yet, so `go.mod` pins a pseudo-version of
+agent-compose `main`. To move to the latest:
+
+```bash
+go get github.com/chaitin/agent-compose/sdk/go@main && go mod tidy
 ```
 
 ## Why a server sits in the middle
@@ -54,7 +86,7 @@ bidirectional stream. The browser keeps a duplex connection of its own, in the
 shape it can actually open:
 
 ```
-browser ──WebSocket──> chatui ──Connect bidi (h2c)──> daemon
+browser ──WebSocket──> ac-chat-app ──Connect bidi (h2c)──> daemon
 ```
 
 Duplex the whole way, because a conversation is duplex the whole way. The
@@ -146,7 +178,7 @@ rename has to work without starting one.
 ## Accounts
 
 Accounts live in the state file (`-state`, by default
-`~/.agent-compose/chatui/state.json`). Passwords are stored as
+`~/.ac-chat-app/state.json`). Passwords are stored as
 PBKDF2-HMAC-SHA256 verifiers, never in the clear. Sessions are cookie-based and
 live in memory, so restarting the server signs everyone out.
 
