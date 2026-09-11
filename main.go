@@ -29,7 +29,7 @@ import (
 	"github.com/chaitin/agent-compose/sdk/go/chat"
 )
 
-//go:embed public/index.html
+//go:embed public/index.html public/fonts
 var assets embed.FS
 
 func main() {

@@ -5,22 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>agent-compose chat</title>
 <style>
+  /* Fusion Pixel (SIL OFL 1.1, see public/fonts) draws every glyph, Chinese
+     included, on a 12px grid, so the page is set at exactly 12px — 24px for
+     display — and at nothing in between: any other size smears the pixels.
+     It is embedded rather than fetched from a font CDN so it renders offline
+     and wherever such a CDN is unreachable. */
+  @font-face {
+    font-family: "Fusion Pixel";
+    src: url("/fonts/fusion-pixel-12px-monospaced-zh_hans.v2026.09.01.woff2") format("woff2");
+    font-display: swap;
+  }
   :root {
-    --bg: #fbfbfa; --panel: #fff; --side: #f4f3f1; --line: #e6e4e0; --ink: #1c1b19;
-    --muted: #78736c; --accent: #2f6f4f; --user: #eef2f7; --tool: #f6f5f3;
-    --danger: #a5352b; --sel: #e7e9e6;
+    --bg: #efe6cf; --panel: #fffbef; --side: #e4d8b8; --edge: #2a2138; --line: #cbbd98;
+    --ink: #2a2138; --muted: #7d6c55; --accent: #23803f; --on-accent: #fffbef;
+    --user: #cfe0ff; --tool: #f6eed8; --danger: #d23c3c; --sel: #f7e7a8;
+    --shadow: #2a2138; --grid: #2a21380d; --title-shadow: #ffd35c;
     /* Tool-kind accents, used only as small tinted badges on the activity
-       trace — muted enough to stay out of the way of the answer itself. */
-    --k-read: #3b6ea5; --k-edit: #a8752b; --k-delete: #a5352b; --k-move: #7a4fa5;
-    --k-search: #2f7ea5; --k-execute: #5a5d66; --k-think: #6a4fa5; --k-fetch: #2f8f83;
+       trace — a cartridge palette, kept off the answer itself. */
+    --k-read: #2f6fd6; --k-edit: #c7751a; --k-delete: #d23c3c; --k-move: #8a4fd6;
+    --k-search: #178fb0; --k-execute: #5c6270; --k-think: #9a4fc9; --k-fetch: #16917f;
+    /* A frame is a 3×3 border image with its corners left out, which is what
+       gives every box the stepped corner of a sprite. A border image cannot
+       take its colour from a custom property, so each palette spells its own. */
+    --frame: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='3' height='3'><path fill='%232a2138' d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z'/></svg>");
+    --frame-accent: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='3' height='3'><path fill='%2323803f' d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z'/></svg>");
+    /* Icons are 12×12 one-bit masks, one pixel per CSS pixel to match the
+       font, painted in whatever colour the text around them has. */
+    --i-check: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><path d='M10 2h2v1h-2zM9 3h3v1H9zM8 4h3v1H8zM1 5h2v1H1zM7 5h3v1H7zM1 6h3v1H1zM6 6h3v1H6zM2 7h6v1H2zM3 8h4v1H3zM4 9h2v1H4z'/></svg>");
+    --i-edit: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><path d='M9 1h2v1H9zM8 2h4v1H8zM7 3h4v1H7zM6 4h4v1H6zM5 5h4v1H5zM4 6h4v1H4zM3 7h4v1H3zM2 8h4v1H2zM2 9h3v1H2zM2 10h2v1H2z'/></svg>");
+    --i-archive: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><path d='M1 2h10v1H1zM1 3h1v1H1zM10 3h1v1h-1zM1 4h10v1H1zM2 5h1v4H2zM9 5h1v4H9zM4 6h4v1H4zM2 9h8v1H2z'/></svg>");
   }
   @media (prefers-color-scheme: dark) {
+    /* Night is the RPG dialog box: deep blue panels in a cream frame. */
     :root {
-      --bg: #16171a; --panel: #1d1f23; --side: #131417; --line: #2e3238; --ink: #e9e7e4;
-      --muted: #9a958d; --accent: #6fb894; --user: #23272e; --tool: #202329;
-      --danger: #e08a80; --sel: #262b31;
-      --k-read: #7fb3e0; --k-edit: #e0b46a; --k-delete: #e08a80; --k-move: #b79ae0;
-      --k-search: #7fc7e0; --k-execute: #a7a9b3; --k-think: #b79ae0; --k-fetch: #7fd6cd;
+      --bg: #151a36; --panel: #222a5c; --side: #10142b; --edge: #e8e2d0; --line: #39427a;
+      --ink: #f2ecd8; --muted: #9da3cf; --accent: #43c465; --on-accent: #10142b;
+      --user: #2d3f8f; --tool: #1a2048; --danger: #ff6b5e; --sel: #2e3770;
+      --shadow: #05060f; --grid: #ffffff08; --title-shadow: #d23c3c;
+      --k-read: #7fb0ff; --k-edit: #ffb45c; --k-delete: #ff7b70; --k-move: #c39bff;
+      --k-search: #6fd6f0; --k-execute: #b4b8c8; --k-think: #d59bff; --k-fetch: #5fe0c8;
+      --frame: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='3' height='3'><path fill='%23e8e2d0' d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z'/></svg>");
+      --frame-accent: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='3' height='3'><path fill='%2343c465' d='M1 0h1v1H1zM0 1h1v1H0zM2 1h1v1H2zM1 2h1v1H1z'/></svg>");
     }
   }
   * { box-sizing: border-box; }
@@ -28,105 +53,147 @@
      element this page hides by attribute needs this to actually disappear. */
   [hidden] { display: none !important; }
   body { margin: 0; height: 100vh; overflow: hidden; background: var(--bg); color: var(--ink);
-         font: 14px/1.6 ui-sans-serif, -apple-system, "Segoe UI", "PingFang SC", sans-serif; }
+         font: 12px/20px "Fusion Pixel", ui-monospace, "PingFang SC", monospace;
+         /* A pixel font has no bold and no smoothing to give: faking either
+            blurs the grid it is drawn on. */
+         font-synthesis: none; -webkit-font-smoothing: none; }
+  /* Graph paper behind the conversation and the sign-in, one cell per glyph. */
+  main, #signin { background-color: var(--bg);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px),
+                      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 12px 12px; }
   button, select, textarea, input {
-    font: inherit; color: inherit; background: var(--panel);
-    border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+    font: inherit; color: inherit; background: var(--panel); border-radius: 0; padding: 6px 10px;
+    border: 2px solid transparent; border-image: var(--frame) 1; background-clip: padding-box;
   }
-  button { cursor: pointer; }
-  button:hover:not(:disabled) { border-color: var(--accent); }
-  button:disabled { opacity: .5; cursor: default; }
-  .ghost { border-color: transparent; background: transparent; padding: 4px 6px; color: var(--muted); }
-  .ghost:hover { background: var(--sel); border-color: transparent; color: var(--ink); }
+  /* The shadow is a drop-shadow filter rather than a box-shadow so it follows
+     the stepped corners instead of squaring them off again. Pressing a button
+     moves it onto its own shadow. */
+  button { cursor: pointer; filter: drop-shadow(2px 2px 0 var(--shadow)); }
+  button:hover:not(:disabled) { border-image-source: var(--frame-accent); }
+  button:active:not(:disabled) { transform: translate(2px, 2px); filter: none; }
+  button:disabled { color: var(--muted); background-color: var(--side); filter: none; cursor: default; }
+  .primary { background-color: var(--accent); color: var(--on-accent); }
+  textarea, input, select { box-shadow: inset 2px 2px 0 var(--sel); }
+  textarea:focus, input:focus, select:focus { outline: none; border-image-source: var(--frame-accent); }
+  button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px dashed var(--accent); outline-offset: 2px; }
+  ::placeholder { color: var(--muted); }
+  .ghost { border-image-source: none; background-color: transparent; filter: none; padding: 2px 6px; color: var(--muted); }
+  .ghost:hover:not(:disabled) { background-color: var(--sel); color: var(--ink); }
+
+  .icon { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; background: currentColor;
+          -webkit-mask: var(--icon) 0 0 / 12px 12px no-repeat; mask: var(--icon) 0 0 / 12px 12px no-repeat; }
+  .icon-edit { --icon: var(--i-edit); }
+  .icon-archive { --icon: var(--i-archive); }
+
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--muted); }
 
   /* ---------- sign in ---------- */
-  #signin { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 10; }
-  #signin form { width: 300px; display: flex; flex-direction: column; gap: 10px;
-                 padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; }
-  #signin h1 { margin: 0 0 6px; font-size: 16px; }
-  #signin .why { color: var(--muted); font-size: 12px; margin: 0; }
-  #signinError { color: var(--danger); font-size: 12px; min-height: 1em; }
+  #signin { position: fixed; inset: 0; display: grid; place-items: center; z-index: 10; }
+  #signin form { width: 320px; display: flex; flex-direction: column; gap: 12px; padding: 24px;
+                 background: var(--panel); border: 4px solid transparent; border-image: var(--frame) 1;
+                 background-clip: padding-box; filter: drop-shadow(4px 4px 0 var(--shadow)); }
+  #signin h1 { margin: 0 0 4px; font-size: 24px; line-height: 28px; font-weight: normal;
+               text-transform: uppercase; text-shadow: 2px 2px 0 var(--title-shadow); }
+  #signin .why { color: var(--muted); margin: 0; }
+  #signinError { color: var(--danger); min-height: 20px; }
 
   /* ---------- layout ---------- */
-  #app { display: grid; grid-template-columns: 268px 1fr; height: 100vh; }
+  #app { display: grid; grid-template-columns: 280px 1fr; height: 100vh; }
 
   aside { display: flex; flex-direction: column; min-height: 0;
-          background: var(--side); border-right: 1px solid var(--line); }
-  .side-top { padding: 12px; display: flex; flex-direction: column; gap: 8px;
-              border-bottom: 1px solid var(--line); }
-  .side-top { padding: 16px 12px; gap: 12px; }
-  .picker-label { display: block; color: var(--muted); font-size: 11px; font-weight: 600; margin-bottom: 5px; }
+          background: var(--side); border-right: 2px solid var(--edge); }
+  .side-top { padding: 16px 12px; display: flex; flex-direction: column; gap: 12px;
+              border-bottom: 2px solid var(--edge); }
+  .picker-label { display: block; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; }
   .project-control { position: relative; }
-  .project-control::after { content: "⌄"; position: absolute; right: 12px; top: 8px; pointer-events: none; color: var(--muted); }
-  .side-top select { width: 100%; appearance: none; padding: 9px 30px 9px 12px; font-weight: 500; text-overflow: ellipsis; }
-  button:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .project-control::after { content: "▼"; position: absolute; right: 12px; top: 8px; pointer-events: none; color: var(--muted); }
+  .side-top select { width: 100%; appearance: none; padding: 6px 30px 6px 10px; text-overflow: ellipsis; }
   .agent-picker { position: relative; }
-  .agent-picker > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+  .agent-picker > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+    background: var(--panel); border: 2px solid transparent; border-image: var(--frame) 1; background-clip: padding-box;
+    filter: drop-shadow(2px 2px 0 var(--shadow)); cursor: pointer; }
   .agent-picker > summary::-webkit-details-marker { display: none; }
-  .agent-picker[open] > summary { border-color: var(--accent); }
-  .agent-avatar { display: grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: 9px;
-    color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); font-weight: 600; }
+  .agent-picker > summary:hover, .agent-picker[open] > summary { border-image-source: var(--frame-accent); }
+  .agent-avatar { display: grid; place-items: center; width: 32px; height: 32px; flex: none;
+    font-size: 24px; line-height: 24px; color: var(--on-accent); background: var(--accent); }
   .agent-selection { min-width: 0; flex: 1; }
-  #agentName { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-  #agentHint { display: block; color: var(--muted); font-size: 11px; }
+  #agentName { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #agentHint { display: block; color: var(--muted); }
   .picker-chevron { color: var(--muted); }
-  .agent-options { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 5;
-    max-height: min(360px, 45vh); overflow-y: auto; padding: 5px; background: var(--panel);
-    border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 30px #0002; }
-  .agent-option { width: 100%; text-align: left; background: transparent; border-color: transparent; padding: 9px; }
-  .agent-option + .agent-option { margin-top: 3px; }
-  .agent-option[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
-  .agent-option-title { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; overflow-wrap: anywhere; }
-  .agent-option-state { color: var(--accent); flex: none; font-size: 11px; }
+  .agent-picker[open] .picker-chevron { transform: rotate(180deg); }
+  .agent-options { position: absolute; top: calc(100% + 8px); left: 0; right: 0; z-index: 5;
+    max-height: min(360px, 45vh); overflow-y: auto; padding: 4px; background: var(--panel);
+    border: 2px solid transparent; border-image: var(--frame) 1; background-clip: padding-box;
+    filter: drop-shadow(4px 4px 0 var(--shadow)); }
+  .agent-option { width: 100%; text-align: left; background-color: transparent; border-image-source: none;
+    filter: none; padding: 6px 8px; }
+  .agent-option + .agent-option { margin-top: 2px; }
+  .agent-option:hover:not(:disabled), .agent-option[aria-pressed="true"] { background-color: var(--sel); }
+  .agent-option:active:not(:disabled) { transform: none; }
+  .agent-option:disabled { background-color: transparent; }
+  .agent-option-title { display: flex; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
+  .agent-option-state { color: var(--accent); flex: none; }
   .agent-option:disabled .agent-option-state { color: var(--muted); }
-  .agent-option-description { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
-  .picker-message { padding: 9px; margin: 0; font-size: 12px; color: var(--muted); }
-  #catalogError { margin: 0; font-size: 11px; color: var(--danger); overflow-wrap: anywhere; }
-  .side-top #new { padding: 9px 12px; border-radius: 10px; }
-  .daemon-info { color: var(--muted); font-size: 11px; line-height: 1.4; overflow: hidden; }
-  .daemon-info .label { display: block; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+  .agent-option-description { display: block; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+  .picker-message { padding: 8px; margin: 0; color: var(--muted); }
+  #catalogError { margin: 0; color: var(--danger); overflow-wrap: anywhere; }
+  .side-top #new { padding: 8px 12px; }
+  .daemon-info { color: var(--muted); overflow: hidden; }
+  .daemon-info .label { display: block; text-transform: uppercase; }
   .daemon-info .address { display: block; overflow-wrap: anywhere; }
-  #new { background: var(--accent); color: #fff; border-color: transparent; font-weight: 600; }
   #list { flex: 1; overflow-y: auto; padding: 8px; }
-  .group { color: var(--muted); font-size: 11px; padding: 10px 8px 4px; letter-spacing: .04em; }
-  .item { display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+  /* A day heading trails off in a dotted rule, the way a game menu divides
+     its sections; at 2px the dots land as square pixels. */
+  .group { display: flex; align-items: center; gap: 8px; color: var(--muted); padding: 12px 4px 4px; }
+  .group::after { content: ""; flex: 1; border-top: 2px dotted var(--line); }
+  .item { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 0; cursor: pointer;
+          border: 2px solid transparent; }
   .item:hover { background: var(--sel); }
-  .item.on { background: var(--sel); }
+  /* The open conversation gets the menu cursor and a frame, not just a tint. */
+  .item::before { content: ""; flex: none; width: 12px; color: var(--accent); }
+  .item.on { background: var(--panel); border-image: var(--frame) 1; background-clip: padding-box; }
+  .item.on::before { content: "▶"; }
   .item .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .item .sub { display: block; font-size: 11px; color: var(--muted); }
+  .item .sub { display: block; color: var(--muted); }
   .item .acts { display: none; gap: 2px; }
   .item:hover .acts, .item.on .acts { display: flex; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none;
-         animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 50% { opacity: .25; } }
-  .side-bottom { border-top: 1px solid var(--line); padding: 10px 12px; display: flex;
-                 align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
-  .side-bottom .who { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 6px; height: 6px; background: var(--accent); flex: none;
+         animation: pulse 1s steps(2) infinite; }
+  @keyframes pulse { 50% { opacity: 0; } }
+  .side-bottom { border-top: 2px solid var(--edge); padding: 8px 12px; display: flex;
+                 align-items: center; gap: 8px; color: var(--muted); }
+  .side-bottom .who { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .side-bottom .who::before { content: "♥ "; color: var(--danger); }
 
   /* ---------- conversation ---------- */
   section.chat { display: flex; flex-direction: column; min-width: 0; height: 100vh; }
-  section.chat > header { display: flex; align-items: center; gap: 8px; padding: 10px 16px;
-                          border-bottom: 1px solid var(--line); background: var(--panel); }
-  #title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #subtitle { color: var(--muted); font-size: 12px; }
-  #status { margin-left: auto; color: var(--muted); font-size: 12px; }
-  main { flex: 1; overflow-y: auto; padding: 20px 0; }
+  section.chat > header { display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+                          border-bottom: 2px solid var(--edge); background: var(--panel); }
+  #title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #subtitle { color: var(--muted); }
+  #status { margin-left: auto; color: var(--muted); }
+  main { flex: 1; overflow-y: auto; padding: 24px 0; }
   .wrap { max-width: 800px; margin: 0 auto; padding: 0 16px; }
   .empty { color: var(--muted); text-align: center; margin-top: 18vh; }
-  .row { display: flex; margin-bottom: 14px; }
+  .empty::after { content: "█"; margin-left: 4px; animation: blink 1s steps(2) infinite; }
+  .row { display: flex; margin-bottom: 16px; }
   .row.user { justify-content: flex-end; }
   .column { max-width: 86%; min-width: 0; }
-  .bubble { max-width: 86%; padding: 10px 14px; border-radius: 12px;
-            background: var(--panel); border: 1px solid var(--line);
-            white-space: pre-wrap; word-break: break-word; }
+  .bubble { max-width: 86%; padding: 8px 12px; background: var(--panel);
+            border: 2px solid transparent; border-image: var(--frame) 1; background-clip: padding-box;
+            filter: drop-shadow(2px 2px 0 var(--shadow)); white-space: pre-wrap; word-break: break-word; }
   .column > .bubble { max-width: 100%; }
-  .row.user .bubble { background: var(--user); }
-  .row.note .bubble { background: transparent; border: 0; color: var(--muted);
-                      font-size: 12px; margin: 0 auto; text-align: center; }
-  .cursor::after { content: "▍"; animation: blink 1s steps(2) infinite; }
+  .row.user .bubble { background-color: var(--user); }
+  .row.note .bubble { background: transparent; border: 0; border-image: none; filter: none;
+                      color: var(--muted); margin: 0 auto; text-align: center; }
+  .row.note .bubble::before { content: "※ "; }
+  .cursor::after { content: "█"; color: var(--accent); animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  footer { border-top: 1px solid var(--line); background: var(--panel); padding: 12px 0; }
+  footer { border-top: 2px solid var(--edge); background: var(--panel); padding: 12px 0; }
   form.composer { display: flex; gap: 8px; align-items: flex-end; }
   form.composer textarea { flex: 1; resize: none; max-height: 180px; }
 
@@ -135,30 +202,30 @@
      answer as one quiet line — no box, no fill, nothing that competes with
      the reply — and only becomes a panel once the reader opens it. A turn
      with no work to report is just that line and stops there. */
-  .activity { margin: 4px 0 0; font-size: 12px; }
+  .activity { margin: 6px 0 0; }
   /* baseline, not center: the summary wraps on a narrow window, and a chevron
      centred on a two-line block floats away from the line it belongs to. */
   .activity > summary { list-style: none; display: flex; align-items: baseline; gap: 6px;
-                        padding: 2px 8px 2px 6px; margin-left: -6px; border-radius: 999px;
-                        color: var(--muted); cursor: default; }
+                        padding: 0 8px 0 6px; margin-left: -6px; color: var(--muted); cursor: default; }
   .activity > summary::-webkit-details-marker { display: none; }
   .activity.has-trace > summary { cursor: pointer; }
   .activity.has-trace > summary:hover { background: var(--sel); color: var(--ink); }
-  .activity .chev { flex: none; display: inline-block; font-size: 9px; opacity: .6;
-                    transition: transform .15s ease; }
+  .activity .chev { flex: none; display: inline-block; }
   .activity .spin { align-self: center; }
   .activity:not(.has-trace) .chev { display: none; }
+  /* Pixels snap rather than glide, so nothing here eases: a quarter turn of a
+     glyph lands on the same grid it started on. */
   .activity[open] .chev { transform: rotate(90deg); }
-  /* The rule is the only thing tying a trace together, so it is drawn from the
-     ink rather than from --line: a hairline nobody can see is not restraint,
-     it is a border that does not exist. */
-  .trace { margin: 6px 0 4px 3px; padding-left: 11px; display: flex; flex-direction: column;
-           border-left: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); }
+  /* The rule is the only thing tying a trace together, so it is drawn from
+     the muted ink rather than from --line: a rule nobody can see is not
+     restraint, it is a border that does not exist. */
+  .trace { margin: 6px 0 4px 4px; padding-left: 10px; display: flex; flex-direction: column;
+           border-left: 2px dotted var(--muted); }
 
   /* A step is a heading over its own entries, not another framed box: the
      left rule above already says "this is the trace". */
-  .step > summary { list-style: none; cursor: pointer; color: var(--muted); font-size: 11px;
-                    padding: 3px 6px; margin: 3px -6px 1px; border-radius: 6px; }
+  .step > summary { list-style: none; cursor: pointer; color: var(--muted);
+                    padding: 0 6px; margin: 4px -6px 2px; }
   .step > summary::-webkit-details-marker { display: none; }
   .step > summary:hover { background: var(--sel); }
   .entries { display: flex; flex-direction: column; }
@@ -166,63 +233,57 @@
   /* One entry is one line of the trace: a tool call, a retry, a thought. The
      shape is always [state/glyph] [title] [kind tag] [preview], so a reader
      scans the same three spots whatever kind of entry it is. */
-  .entry { border-radius: 7px; }
-  .entry > summary { cursor: pointer; display: flex; align-items: center; gap: 7px;
-                     padding: 3px 7px; margin: 0 -7px; border-radius: 7px; font-size: 12px;
-                     list-style: none; }
+  .entry > summary { cursor: pointer; display: flex; align-items: center; gap: 8px;
+                     padding: 0 6px; margin: 0 -6px; list-style: none; }
   .entry > summary::-webkit-details-marker { display: none; }
   .entry > summary:hover { background: var(--sel); }
-  .entry .glyph { flex: none; width: 15px; text-align: center; color: var(--muted); font-size: 11px; }
+  .entry .glyph { flex: none; width: 12px; text-align: center; color: var(--muted); }
   .entry .title { color: var(--ink); }
-  .entry.tool .title { font-weight: 600; flex: none; max-width: 46%; overflow: hidden;
+  .entry.tool .title { flex: none; max-width: 46%; overflow: hidden;
                        text-overflow: ellipsis; white-space: nowrap; }
   .entry .head { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-                color: var(--muted); font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11.5px; }
-  .entry pre { margin: 2px 0 6px 22px; padding: 7px 9px; background: var(--tool);
-               border: 1px solid var(--line); border-radius: 7px; white-space: pre-wrap;
-               word-break: break-word; max-height: 240px; overflow: auto;
-               font-family: ui-monospace, SFMono-Regular, monospace;
-               font-size: 11.5px; color: var(--muted); }
-  .entry.failed > summary { background: color-mix(in srgb, var(--danger) 9%, transparent); }
+                 color: var(--muted); }
+  .entry pre { margin: 2px 0 6px 20px; padding: 6px 8px; background: var(--tool);
+               border: 2px solid var(--line); white-space: pre-wrap; word-break: break-word;
+               max-height: 240px; overflow: auto; font: inherit; color: var(--muted); }
+  .entry.failed > summary { background: color-mix(in srgb, var(--danger) 12%, transparent); }
   .entry.failed .title { color: var(--danger); }
 
-  /* State dot: a pending tool call spins, a finished one turns into a check
-     or a cross, so the same glyph slot tells you where a call stands without
+  /* State slot: a pending tool call spins, a finished one turns into a check
+     or a cross, so the same slot tells you where a call stands without
      reading the text next to it. */
-  .entry .state { flex: none; width: 14px; height: 14px; display: grid; place-items: center; }
-  .entry .state.pending { width: 9px; height: 9px; margin: 0 3px; border: 2px solid var(--line);
-                          border-top-color: var(--accent); border-radius: 50%;
-                          animation: spin .8s linear infinite; }
-  .entry .state.ok::before { content: "✓"; color: var(--accent); font-weight: 700; }
-  .entry .state.failed::before { content: "✕"; color: var(--danger); font-weight: 700; }
-
-  /* Kind tag: a small tinted pill naming what a tool does, colored per kind
-     so a long trace can be skimmed by shape rather than read line by line. */
-  .tag { flex: none; font-size: 10px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
-        padding: 1px 6px; border-radius: 999px; color: var(--muted); background: var(--sel); }
-  .tag.kind-read    { color: var(--k-read);    background: color-mix(in srgb, var(--k-read) 16%, transparent); }
-  .tag.kind-edit    { color: var(--k-edit);    background: color-mix(in srgb, var(--k-edit) 16%, transparent); }
-  .tag.kind-delete  { color: var(--k-delete);  background: color-mix(in srgb, var(--k-delete) 16%, transparent); }
-  .tag.kind-move    { color: var(--k-move);    background: color-mix(in srgb, var(--k-move) 16%, transparent); }
-  .tag.kind-search  { color: var(--k-search);  background: color-mix(in srgb, var(--k-search) 16%, transparent); }
-  .tag.kind-execute { color: var(--k-execute); background: color-mix(in srgb, var(--k-execute) 16%, transparent); }
-  .tag.kind-think   { color: var(--k-think);   background: color-mix(in srgb, var(--k-think) 16%, transparent); }
-  .tag.kind-fetch   { color: var(--k-fetch);   background: color-mix(in srgb, var(--k-fetch) 16%, transparent); }
-
-  /* Plan: a real checkbox rather than a leading unicode glyph, so it reads
-     as a checklist at a glance instead of as text. */
-  .plan { margin: 4px 0 8px; padding: 2px 0 4px; list-style: none; font-size: 12.5px;
-         display: flex; flex-direction: column; gap: 5px; }
-  .plan li { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); }
-  .plan li::before { content: ""; flex: none; width: 13px; height: 13px; margin-top: 2px;
-                     border-radius: 4px; border: 1.5px solid var(--line); }
-  .plan li.done { color: var(--muted); text-decoration: line-through; opacity: .7; }
-  .plan li.done::before { content: "✓"; display: grid; place-items: center; font-size: 9px; font-weight: 700;
-                          line-height: 1; color: #fff; background: var(--accent); border-color: var(--accent); }
-
-  .spin { width: 10px; height: 10px; border: 2px solid var(--line); border-top-color: var(--accent);
-          border-radius: 50%; animation: spin .8s linear infinite; flex: none; }
+  .entry .state { flex: none; width: 12px; height: 12px; display: grid; place-items: center; }
+  .entry .state.pending, .spin { width: 8px; height: 8px; margin: 0 2px; flex: none;
+    background: conic-gradient(var(--accent) 0 25%, var(--line) 0);
+    animation: spin 1s steps(4) infinite; }
+  .entry .state.ok::before { content: ""; width: 12px; height: 12px; background: var(--accent);
+    -webkit-mask: var(--i-check) 0 0 / 12px 12px no-repeat; mask: var(--i-check) 0 0 / 12px 12px no-repeat; }
+  .entry .state.failed::before { content: "×"; color: var(--danger); }
+  /* A square spinner turning in quarter steps: each frame sits on the grid. */
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Kind tag: a small tinted chip naming what a tool does, colored per kind
+     so a long trace can be skimmed by shape rather than read line by line. */
+  .tag { flex: none; padding: 0 4px; line-height: 16px; text-transform: uppercase;
+         color: var(--muted); background: var(--sel); }
+  .tag.kind-read    { color: var(--k-read);    background: color-mix(in srgb, var(--k-read) 18%, transparent); }
+  .tag.kind-edit    { color: var(--k-edit);    background: color-mix(in srgb, var(--k-edit) 18%, transparent); }
+  .tag.kind-delete  { color: var(--k-delete);  background: color-mix(in srgb, var(--k-delete) 18%, transparent); }
+  .tag.kind-move    { color: var(--k-move);    background: color-mix(in srgb, var(--k-move) 18%, transparent); }
+  .tag.kind-search  { color: var(--k-search);  background: color-mix(in srgb, var(--k-search) 18%, transparent); }
+  .tag.kind-execute { color: var(--k-execute); background: color-mix(in srgb, var(--k-execute) 18%, transparent); }
+  .tag.kind-think   { color: var(--k-think);   background: color-mix(in srgb, var(--k-think) 18%, transparent); }
+  .tag.kind-fetch   { color: var(--k-fetch);   background: color-mix(in srgb, var(--k-fetch) 18%, transparent); }
+
+  /* Plan: a drawn box rather than a leading glyph, so it reads as a
+     checklist at a glance; a finished item fills its box. */
+  .plan { margin: 4px 0 8px; padding: 2px 0 4px; list-style: none;
+         display: flex; flex-direction: column; gap: 4px; }
+  .plan li { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); }
+  .plan li::before { content: ""; flex: none; width: 12px; height: 12px; margin-top: 4px;
+                     border: 2px solid var(--muted); }
+  .plan li.done { color: var(--muted); text-decoration: line-through; }
+  .plan li.done::before { border-color: var(--accent); background: var(--accent); }
 </style>
 </head>
 <body>
@@ -234,7 +295,7 @@
     <input id="user" autocomplete="username" placeholder="用户名" required>
     <input id="password" type="password" autocomplete="current-password" placeholder="密码" required>
     <div id="signinError"></div>
-    <button type="submit">登录</button>
+    <button class="primary" type="submit">登录</button>
   </form>
 </div>
 
@@ -251,13 +312,13 @@
           <summary aria-labelledby="agentLabel agentName">
             <span class="agent-avatar" id="agentAvatar" aria-hidden="true">A</span>
             <span class="agent-selection"><span id="agentName">加载中…</span><span id="agentHint">请选择项目</span></span>
-            <span class="picker-chevron" aria-hidden="true">⌄</span>
+            <span class="picker-chevron" aria-hidden="true">▼</span>
           </summary>
           <div class="agent-options" id="agentOptions"></div>
         </details>
       </div>
       <p id="catalogError" hidden></p>
-      <button id="new" disabled>＋ 新建对话</button>
+      <button class="primary" id="new" disabled>＋ 新建对话</button>
       <div class="daemon-info" title="当前 UI Server 连接的 agent-compose daemon">
         <span class="label">Daemon</span>
         <span class="address" id="daemon">加载中…</span>
@@ -266,7 +327,7 @@
     <div id="list"></div>
     <div class="side-bottom">
       <span class="who" id="who"></span>
-      <button class="ghost" id="recover" title="从守护进程重建列表">⟳</button>
+      <button class="ghost" id="recover" title="从守护进程重建列表" aria-label="从守护进程重建列表">↻</button>
       <button class="ghost" id="signout">退出</button>
     </div>
   </aside>
@@ -278,14 +339,14 @@
         <div id="subtitle"></div>
       </div>
       <span id="status"></span>
-      <button class="ghost" id="renameBtn" title="重命名" hidden>✎</button>
-      <button class="ghost" id="archiveBtn" title="归档对话" hidden>🗄</button>
+      <button class="ghost" id="renameBtn" title="重命名" aria-label="重命名" hidden><span class="icon icon-edit"></span></button>
+      <button class="ghost" id="archiveBtn" title="归档对话" aria-label="归档对话" hidden><span class="icon icon-archive"></span></button>
     </header>
     <main id="scroller"></main>
     <footer><div class="wrap">
       <form class="composer" id="composer">
         <textarea id="text" rows="1" placeholder="说点什么…  (Enter 发送, Shift+Enter 换行)"></textarea>
-        <button id="send" type="submit">发送</button>
+        <button class="primary" id="send" type="submit">发送</button>
       </form>
     </div></footer>
   </section>
@@ -459,7 +520,7 @@ function updateAgentSelection() {
   for (const [index, button] of [...$("agentOptions").querySelectorAll("button")].entries()) {
     const chosen = project && project.agents[index] === selectedAgent;
     button.setAttribute("aria-pressed", String(chosen));
-    button.querySelector(".agent-option-state").textContent = button.disabled ? "不可用" : chosen ? "✓" : "";
+    button.querySelector(".agent-option-state").textContent = button.disabled ? "不可用" : chosen ? "●" : "";
   }
 }
 
@@ -569,8 +630,8 @@ function drawItem(item) {
 
   const acts = document.createElement("div");
   acts.className = "acts";
-  acts.appendChild(iconButton("✎", "重命名", (clickEvent) => { clickEvent.stopPropagation(); renameConversation(item); }));
-  acts.appendChild(iconButton("🗄", "归档", (clickEvent) => { clickEvent.stopPropagation(); archiveConversation(item); }));
+  acts.appendChild(iconButton("edit", "重命名", (clickEvent) => { clickEvent.stopPropagation(); renameConversation(item); }));
+  acts.appendChild(iconButton("archive", "归档", (clickEvent) => { clickEvent.stopPropagation(); archiveConversation(item); }));
   row.appendChild(acts);
   return row;
 }
@@ -597,11 +658,14 @@ function refreshSidebarRow(id) {
   if (item) sub.textContent = liveSubtitle(item);
 }
 
-function iconButton(glyph, title, onClick) {
+// iconButton draws one of the page's pixel icons rather than a text glyph:
+// the pixel font has no pencil or box, and an emoji would break the grid.
+function iconButton(icon, title, onClick) {
   const button = document.createElement("button");
   button.className = "ghost";
-  button.textContent = glyph;
+  button.appendChild(span("icon icon-" + icon, ""));
   button.title = title;
+  button.setAttribute("aria-label", title);
   button.onclick = onClick;
   return button;
 }
@@ -1080,10 +1144,10 @@ function applyEvent(state, event) {
         (event.maxAttempts ? ` / ${event.maxAttempts}` : ""), event.message);
       break;
     case "compaction":
-      addEntry(state, event.step, "🗜", event.phase === "start" ? "开始压缩上下文" : "压缩完成");
+      addEntry(state, event.step, "▣", event.phase === "start" ? "开始压缩上下文" : "压缩完成");
       break;
     case "error":
-      addEntry(state, event.step, "⚠", `${event.severity}${event.code ? " · " + event.code : ""}`,
+      addEntry(state, event.step, "！", `${event.severity}${event.code ? " · " + event.code : ""}`,
         event.message, true);
       break;
     default:
@@ -1294,7 +1358,7 @@ function appendReasoning(state, event) {
   const key = event.step === undefined ? "-" : String(event.step);
   let block = state.reasoning.get(key);
   if (!block) {
-    const entry = addEntry(state, event.step, "💭", "思考", "");
+    const entry = addEntry(state, event.step, "…", "思考", "");
     const pre = document.createElement("pre");
     entry.appendChild(pre);
     block = { pre, text: "" };

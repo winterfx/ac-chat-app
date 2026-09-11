@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +112,29 @@ func TestEveryAPIRouteNeedsASession(t *testing.T) {
 		if recorder.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s answered %d without a session, want 401", route.method, route.path, recorder.Code)
 		}
+	}
+}
+
+func TestThePageFontIsServedWithoutASession(t *testing.T) {
+	server := newTestServer(t, quietDaemon(t))
+	page := call(t, server, nil, http.MethodGet, "/", "")
+	found := regexp.MustCompile(`url\("(/fonts/[^"]+\.woff2)"\)`).FindStringSubmatch(page.Body.String())
+	if found == nil {
+		t.Fatal("the page declares no embedded font")
+	}
+	// The sign-in form is set in this font too, so it cannot wait for a session.
+	font := call(t, server, nil, http.MethodGet, found[1], "")
+	if font.Code != http.StatusOK {
+		t.Fatalf("GET %s answered %d, want 200", found[1], font.Code)
+	}
+	if got := font.Header().Get("Content-Type"); got != "font/woff2" {
+		t.Errorf("Content-Type %q, want font/woff2", got)
+	}
+	if !strings.HasPrefix(font.Body.String(), "wOF2") {
+		t.Error("the served file is not a WOFF2 font")
+	}
+	if code := call(t, server, nil, http.MethodGet, "/fonts/OFL.txt", "").Code; code != http.StatusNotFound {
+		t.Errorf("GET /fonts/OFL.txt answered %d; only font files are served", code)
 	}
 }
 
