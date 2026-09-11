@@ -47,13 +47,14 @@ type uiServer struct {
 	opening map[string]chan struct{}
 }
 
-// routes wires every endpoint. Everything but signing in and the page itself
-// requires a session.
+// routes wires every endpoint. Everything but signing in, the page itself and
+// the font it is set in requires a session.
 func (s *uiServer) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	guard := s.auth.guard
 
 	mux.HandleFunc("GET /", s.index)
+	mux.HandleFunc("GET /fonts/{name}", s.font)
 	mux.HandleFunc("POST /api/login", s.auth.signIn)
 	mux.HandleFunc("POST /api/logout", s.auth.signOut)
 	mux.HandleFunc("GET /api/me", s.auth.whoami)
@@ -156,6 +157,24 @@ func (s *uiServer) index(w http.ResponseWriter, _ *http.Request) {
 	// server must not be shadowed by a copy the browser decided to keep.
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write(page)
+}
+
+// font serves the pixel typeface the page is set in. It ships inside the
+// binary like the page does, so the UI looks the same offline and on a network
+// that cannot reach a font CDN. Only font files are served: the licences
+// embedded beside them travel with the binary, not to the browser.
+func (s *uiServer) font(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if !strings.HasSuffix(name, ".woff2") {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "font/woff2")
+	// The file name carries the font's release, so a new font is a new URL and
+	// this one can be kept for good. Unlike the page, there is no rebuilt copy
+	// for a cached one to shadow.
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	http.ServeFileFS(w, r, assets, "public/fonts/"+name)
 }
 
 // list draws the sidebar from this server's own index.

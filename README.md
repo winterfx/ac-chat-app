@@ -73,6 +73,11 @@ agent-compose `main`. To move to the latest:
 go get github.com/chaitin/agent-compose/sdk/go@main && go mod tidy
 ```
 
+The UI is set in [Fusion Pixel](https://github.com/TakWolf/fusion-pixel-font)
+12px (monospaced, Simplified Chinese), embedded from `public/fonts/` and served
+at `/fonts/` without a session, so the page needs no font CDN and renders the
+same offline. Its licences (SIL OFL 1.1) sit beside it.
+
 ## Why a server sits in the middle
 
 A browser cannot hold a conversation with the daemon directly. Connect needs
